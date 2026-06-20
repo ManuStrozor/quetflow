@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <?!= include('styles/Styles'); ?>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo">⛪</span>
+      <div>
+        <h1>QuetFlow</h1>
+        <p class="tagline">Centralisez et visualisez les quêtes paroissiales</p>
+      </div>
+    </div>
+    <a id="ssLink" class="ss-link" target="_blank" rel="noopener" title="Ouvrir le classeur de données">📑 Données</a>
+  </header>
+
+  <main class="container">
+
+    <!-- Import -->
+    <section class="card import-card">
+      <h2>📥 Importer un export</h2>
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Importer un fichier CSV">
+        <p><strong>Glissez un fichier CSV</strong> ici ou cliquez pour parcourir</p>
+        <p class="hint">Colonnes reconnues : Date · Paroisse · Type · Moyen de paiement · Montant</p>
+        <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
+      </div>
+    </section>
+
+    <!-- KPIs -->
+    <section class="kpis">
+      <div class="card kpi"><span class="kpi-label">Total collecté</span><span class="kpi-value" id="kpiTotal">—</span></div>
+      <div class="card kpi"><span class="kpi-label">Transactions</span><span class="kpi-value" id="kpiCount">—</span></div>
+      <div class="card kpi"><span class="kpi-label">Montant moyen</span><span class="kpi-value" id="kpiAvg">—</span></div>
+      <div class="card kpi"><span class="kpi-label">Paroisses</span><span class="kpi-value" id="kpiPar">—</span></div>
+    </section>
+
+    <!-- Graphiques -->
+    <section class="grid-2">
+      <div class="card chart-card"><h3>Évolution mensuelle</h3><div class="chart-wrap"><canvas id="chartMonth"></canvas></div></div>
+      <div class="card chart-card"><h3>Répartition par moyen de paiement</h3><div class="chart-wrap"><canvas id="chartMoyen"></canvas></div></div>
+    </section>
+    <section class="card chart-card">
+      <h3>Top paroisses</h3><div class="chart-wrap tall"><canvas id="chartParoisse"></canvas></div>
+    </section>
+
+    <!-- Dernières lignes -->
+    <section class="card">
+      <div class="card-head">
+        <h3>Dernières lignes</h3>
+        <button id="resetBtn" class="btn-ghost" type="button">Tout effacer</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Paroisse</th><th>Type</th><th>Moyen</th><th class="num">Montant</th></tr></thead>
+          <tbody id="recentBody"><tr><td colspan="5" class="empty">Aucune donnée pour le moment.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <div id="loader" class="loader" hidden><div class="spinner"></div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <?!= include('scripts/Script'); ?>
+</body>
+</html>

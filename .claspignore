@@ -1,0 +1,11 @@
+node_modules/**
+__tests__/**
+.github/**
+.claude/**
+.gitignore
+.claspignore
+*.min.js
+package.json
+package-lock.json
+jest.config.js
+README.md

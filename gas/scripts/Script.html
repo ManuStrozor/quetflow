@@ -1,0 +1,183 @@
+<script>
+  const fmtEur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  const fmtEur2 = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+  const fmtInt = new Intl.NumberFormat('fr-FR');
+  const PALETTE = ['#5b4bd6', '#16b8a6', '#f5a524', '#ef5da8', '#3aa0ff', '#9b8cff', '#27c498', '#ff7a59'];
+  const charts = {};
+
+  /* ----- Démarrage ----- */
+  document.addEventListener('DOMContentLoaded', function () {
+    initImport();
+    document.getElementById('resetBtn').addEventListener('click', onReset);
+    google.script.run.withSuccessHandler(function (url) {
+      document.getElementById('ssLink').href = url;
+    }).getStorageUrl();
+    refresh();
+  });
+
+  /* ----- Import ----- */
+  function initImport() {
+    const zone = document.getElementById('dropzone');
+    const input = document.getElementById('fileInput');
+
+    zone.addEventListener('click', function () { input.click(); });
+    zone.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+    });
+    input.addEventListener('change', function () { if (input.files[0]) handleFile(input.files[0]); input.value = ''; });
+
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('drag'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('drag'); });
+    });
+    zone.addEventListener('drop', function (e) {
+      const f = e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+  }
+
+  function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      showLoader(true);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          showLoader(false);
+          let m = res.imported + ' ligne(s) importée(s)';
+          if (res.skipped) m += ' · ' + res.skipped + ' ignorée(s)';
+          m += ' · total : ' + res.total;
+          toast('✅ ' + m);
+          refresh();
+        })
+        .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
+        .importCsv(e.target.result);
+    };
+    reader.onerror = function () { toast('⚠️ Lecture du fichier impossible.', true); };
+    reader.readAsText(file);
+  }
+
+  /* ----- Rafraîchissement du dashboard ----- */
+  function refresh() {
+    showLoader(true);
+    google.script.run
+      .withSuccessHandler(function (data) { showLoader(false); render(data); })
+      .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
+      .getDashboardData();
+  }
+
+  function render(data) {
+    const k = data.kpis;
+    document.getElementById('kpiTotal').textContent = fmtEur.format(k.total);
+    document.getElementById('kpiCount').textContent = fmtInt.format(k.count);
+    document.getElementById('kpiAvg').textContent = fmtEur2.format(k.moyenne);
+    document.getElementById('kpiPar').textContent = fmtInt.format(k.paroisses);
+
+    renderRecent(data.recent);
+
+    const months = data.byMonth.map(function (p) { return formatMonth(p.label); });
+    lineChart('chartMonth', months, data.byMonth.map(function (p) { return p.value; }));
+    doughnutChart('chartMoyen', data.byMoyen.map(p => p.label), data.byMoyen.map(p => p.value));
+    barChart('chartParoisse', data.byParoisse.map(p => p.label), data.byParoisse.map(p => p.value));
+  }
+
+  function renderRecent(rows) {
+    const body = document.getElementById('recentBody');
+    if (!rows || !rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">Aucune donnée pour le moment.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function (r) {
+      return '<tr><td>' + esc(r.date) + '</td><td>' + esc(r.paroisse) + '</td><td>' + esc(r.type) +
+             '</td><td>' + esc(r.moyen) + '</td><td class="num">' + fmtEur2.format(r.montant) + '</td></tr>';
+    }).join('');
+  }
+
+  /* ----- Graphiques (Chart.js) ----- */
+  function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+  function lineChart(id, labels, values) {
+    destroyChart(id);
+    charts[id] = new Chart(byId(id), {
+      type: 'line',
+      data: { labels: labels, datasets: [{ data: values, borderColor: PALETTE[0],
+        backgroundColor: 'rgba(91,75,214,.12)', fill: true, tension: .3, pointRadius: 3 }] },
+      options: baseOpts(false, true)
+    });
+  }
+
+  function barChart(id, labels, values) {
+    destroyChart(id);
+    charts[id] = new Chart(byId(id), {
+      type: 'bar',
+      data: { labels: labels, datasets: [{ data: values, backgroundColor: PALETTE[0], borderRadius: 6 }] },
+      options: Object.assign(baseOpts(false, true), { indexAxis: 'y' })
+    });
+  }
+
+  function doughnutChart(id, labels, values) {
+    destroyChart(id);
+    charts[id] = new Chart(byId(id), {
+      type: 'doughnut',
+      data: { labels: labels, datasets: [{ data: values, backgroundColor: PALETTE, borderWidth: 0 }] },
+      options: baseOpts(true, false)
+    });
+  }
+
+  function baseOpts(showLegend, eurAxis) {
+    const opts = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: showLegend, position: 'bottom' },
+        tooltip: { callbacks: { label: function (c) {
+          const v = c.parsed.y != null ? c.parsed.y : (c.parsed.x != null ? c.parsed.x : c.parsed);
+          return ' ' + fmtEur2.format(v);
+        } } }
+      }
+    };
+    if (eurAxis) {
+      opts.scales = { x: { ticks: { callback: tickEur } }, y: { ticks: { callback: tickEur } } };
+    }
+    return opts;
+  }
+  function tickEur(v) { return (typeof v === 'number') ? fmtEur.format(v) : v; }
+
+  /* ----- Effacer ----- */
+  function onReset() {
+    if (!confirm('Effacer toutes les données importées ? Cette action est irréversible.')) return;
+    showLoader(true);
+    google.script.run
+      .withSuccessHandler(function (data) { showLoader(false); toast('🧹 Données effacées.'); render(data); })
+      .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
+      .resetData();
+  }
+
+  /* ----- Utilitaires ----- */
+  function byId(id) { return document.getElementById(id); }
+  function showLoader(v) { document.getElementById('loader').hidden = !v; }
+
+  let toastTimer = null;
+  function toast(msg, isErr) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.toggle('err', !!isErr);
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, 4200);
+  }
+
+  function formatMonth(ym) {
+    const parts = String(ym).split('-');
+    if (parts.length !== 2) return ym;
+    const noms = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const i = Number(parts[1]) - 1;
+    return (noms[i] || parts[1]) + ' ' + parts[0];
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+</script>
