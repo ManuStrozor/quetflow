@@ -104,6 +104,8 @@
     position: fixed; inset: 0; background: rgba(244,245,251,.6);
     display: flex; align-items: center; justify-content: center; z-index: 60;
   }
+  /* L'attribut [hidden] ne suffit pas : .loader impose display:flex. On le rétablit. */
+  .loader[hidden] { display: none; }
   .spinner {
     width: 38px; height: 38px; border: 4px solid #d9daea; border-top-color: var(--primary);
     border-radius: 50%; animation: spin .8s linear infinite;
