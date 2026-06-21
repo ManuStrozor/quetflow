@@ -176,7 +176,9 @@
     const cells = {};                            // cells[celebration][location] = net
     const celebs = {}, locs = {};
     rows.forEach(function (r) {
-      const c = r.celebration || '—', l = r.location || '—';
+      const l = String(r.location || '').trim();
+      if (!l) return;                            // Quêtes = Location non vide
+      const c = r.celebration || '—';
       celebs[c] = true; locs[l] = true;
       (cells[c] || (cells[c] = {}));
       cells[c][l] = (cells[c][l] || 0) + r.net;
