@@ -43,6 +43,7 @@ function doGet() {
   return HtmlService.createTemplateFromFile('App')
     .evaluate()
     .setTitle('QuetFlow')
+    .setFaviconUrl('https://drive.google.com/uc?id=1UjJxr-F1DleqgNk6at-Wxp3ctWB20717&.png')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
