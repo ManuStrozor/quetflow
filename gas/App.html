@@ -24,38 +24,88 @@
       <h2>📥 Importer un export</h2>
       <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Importer un fichier CSV">
         <p><strong>Glissez un fichier CSV</strong> ici ou cliquez pour parcourir</p>
-        <p class="hint">Colonnes reconnues : Date · Paroisse · Type · Moyen de paiement · Montant</p>
+        <p class="hint">Export attendu : Terminal · Project Name · Transaction Date · Amount · Celebration · Location…</p>
         <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
       </div>
     </section>
 
+    <!-- Filtres -->
+    <section class="card filters" id="filters">
+      <div class="filter-group" role="group" aria-label="Filtrer par jour">
+        <span class="filter-label">Jour</span>
+        <div class="seg" data-filter="jour">
+          <button type="button" class="seg-btn is-active" data-value="all">Tout</button>
+          <button type="button" class="seg-btn" data-value="dim">Dimanche</button>
+          <button type="button" class="seg-btn" data-value="sem">Semaine</button>
+        </div>
+      </div>
+      <div class="filter-group" role="group" aria-label="Filtrer par moment">
+        <span class="filter-label">Moment</span>
+        <div class="seg" data-filter="moment">
+          <button type="button" class="seg-btn is-active" data-value="all">Tout</button>
+          <button type="button" class="seg-btn" data-value="matin">Matin</button>
+          <button type="button" class="seg-btn" data-value="soir">Soir</button>
+        </div>
+      </div>
+      <span class="filter-hint">Matin = avant 14h24 · Dimanche = WEEKDAY 1</span>
+    </section>
+
     <!-- KPIs -->
     <section class="kpis">
-      <div class="card kpi"><span class="kpi-label">Total collecté</span><span class="kpi-value" id="kpiTotal">—</span></div>
+      <div class="card kpi"><span class="kpi-label">Total collecté (net)</span><span class="kpi-value" id="kpiTotal">—</span></div>
       <div class="card kpi"><span class="kpi-label">Transactions</span><span class="kpi-value" id="kpiCount">—</span></div>
       <div class="card kpi"><span class="kpi-label">Montant moyen</span><span class="kpi-value" id="kpiAvg">—</span></div>
-      <div class="card kpi"><span class="kpi-label">Paroisses</span><span class="kpi-value" id="kpiPar">—</span></div>
+      <div class="card kpi"><span class="kpi-label">Bornes actives</span><span class="kpi-value" id="kpiBornes">—</span></div>
     </section>
 
     <!-- Graphiques -->
     <section class="grid-2">
-      <div class="card chart-card"><h3>Évolution mensuelle</h3><div class="chart-wrap"><canvas id="chartMonth"></canvas></div></div>
-      <div class="card chart-card"><h3>Répartition par moyen de paiement</h3><div class="chart-wrap"><canvas id="chartMoyen"></canvas></div></div>
-    </section>
-    <section class="card chart-card">
-      <h3>Top paroisses</h3><div class="chart-wrap tall"><canvas id="chartParoisse"></canvas></div>
+      <div class="card chart-card"><h3>Évolution mensuelle (net)</h3><div class="chart-wrap"><canvas id="chartMonth"></canvas></div></div>
+      <div class="card chart-card"><h3>Répartition matin / soir</h3><div class="chart-wrap"><canvas id="chartMoment"></canvas></div></div>
     </section>
 
-    <!-- Dernières lignes -->
+    <!-- Bornes -->
     <section class="card">
       <div class="card-head">
-        <h3>Dernières lignes</h3>
+        <h3>🏧 Bornes <span class="muted-note">(par Project Name, avec ventilation matin / soir)</span></h3>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th>Borne</th><th class="num">Transac.</th>
+            <th class="num">Matin</th><th class="num">Soir</th><th class="num">Total net</th>
+          </tr></thead>
+          <tbody id="bornesBody"><tr><td colspan="5" class="empty">Aucune donnée pour le moment.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Quêtes : tableau croisé Celebration × Location -->
+    <section class="card">
+      <div class="card-head">
+        <h3>🙏 Quêtes <span class="muted-note">(Célébration × Lieu — total net, selon les filtres)</span></h3>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table cross-table" id="quetesTable">
+          <thead><tr><th>Célébration ＼ Lieu</th></tr></thead>
+          <tbody id="quetesBody"><tr><td class="empty">Aucune donnée pour le moment.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Dernières transactions -->
+    <section class="card">
+      <div class="card-head">
+        <h3>Dernières transactions</h3>
         <button id="resetBtn" class="btn-ghost" type="button">Tout effacer</button>
       </div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Date</th><th>Paroisse</th><th>Type</th><th>Moyen</th><th class="num">Montant</th></tr></thead>
-          <tbody id="recentBody"><tr><td colspan="5" class="empty">Aucune donnée pour le moment.</td></tr></tbody>
+          <thead><tr>
+            <th>Date</th><th>Heure</th><th>Borne</th><th>Célébration</th><th>Lieu</th>
+            <th class="num">Brut</th><th class="num">Net</th>
+          </tr></thead>
+          <tbody id="recentBody"><tr><td colspan="7" class="empty">Aucune donnée pour le moment.</td></tr></tbody>
         </table>
       </div>
     </section>

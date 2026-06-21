@@ -2,23 +2,36 @@
  * QuetFlow — Web app Google Apps Script
  * Import, normalisation et visualisation des données de quêtes paroissiales.
  *
- * Couche serveur : sert l'app web, importe les exports CSV dans un Google Sheet
- * et renvoie les agrégats au tableau de bord.
+ * Couche serveur : sert l'app web, importe les exports CSV (13 colonnes) dans un
+ * Google Sheet et renvoie les lignes normalisées au tableau de bord, qui agrège
+ * et filtre côté client (Bornes, Quêtes, ventilation matin/soir & dominical).
  */
 
 const SHEET_NAME = 'Quetes';
 const PROP_SS_ID = 'QUETFLOW_SS_ID';
+const TZ = 'Europe/Paris';
+
+// Discount appliqué au montant brut : net = ROUNDDOWN(brut * RATE ; 2) - FIXED.
+const DISCOUNT_RATE = 0.9885;
+const DISCOUNT_FIXED = 0.1;
+// Fraction de journée séparant matin et soir (0,6 jour = 14h24).
+const MORNING_THRESHOLD = 0.6;
 
 // Colonnes canoniques stockées (l'ordre définit l'ordre des colonnes du Sheet).
-const HEADERS = ['Date', 'Paroisse', 'Type', 'Moyen', 'Montant'];
+const HEADERS = ['Date', 'Terminal ID', 'Terminal Name', 'Project Name',
+                 'Celebration', 'Location', 'Transaction ID', 'Amount Brut', 'Amount Net'];
 
-// Synonymes d'en-têtes d'export -> colonne canonique (clé).
+// Synonymes d'en-têtes d'export -> colonne canonique (clé), comparés après normalizeKey_.
+// Colonnes d'export ignorées : Client Name, Currency, Type, Total Transactions, Total Amount.
 const HEADER_ALIASES = {
-  date:     ['date', 'jour', 'datecelebration', 'datequete', 'horodatage'],
-  paroisse: ['paroisse', 'eglise', 'lieu', 'site', 'etablissement'],
-  type:     ['type', 'typequete', 'nature', 'categorie', 'celebration'],
-  moyen:    ['moyen', 'moyenpaiement', 'paiement', 'reglement', 'mode'],
-  montant:  ['montant', 'somme', 'total', 'valeur', 'amount', 'euros', 'eur']
+  date:          ['transactiondate', 'date', 'datetransaction', 'horodatage'],
+  terminalId:    ['terminalid'],
+  terminalName:  ['terminalname'],
+  projectName:   ['projectname', 'project', 'projet'],
+  celebration:   ['celebration', 'quete'],
+  location:      ['location', 'lieu'],
+  transactionId: ['transactionid'],
+  amount:        ['amount', 'montant']
 };
 
 /* ------------------------------------------------------------------ *
@@ -53,13 +66,21 @@ function getSpreadsheet_() {
   return ss;
 }
 
-/** Récupère (ou initialise) la feuille de données avec sa ligne d'en-tête. */
+/**
+ * Récupère la feuille de données. (Re)pose la ligne d'en-tête si elle est absente
+ * ou obsolète : un changement de schéma efface l'ancien contenu (migration).
+ */
 function getSheet_() {
   const ss = getSpreadsheet_();
   let sh = ss.getSheetByName(SHEET_NAME);
   if (!sh) {
     sh = ss.getSheets()[0];          // réutilise la 1re feuille (nom localisé variable)
     sh.setName(SHEET_NAME);
+    sh.clear();
+  }
+  const lastCol = sh.getLastColumn();
+  const firstRow = lastCol ? sh.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  if (firstRow.join('|') !== HEADERS.join('|')) {
     sh.clear();
     sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight('bold');
     sh.setFrozenRows(1);
@@ -77,9 +98,11 @@ function getStorageUrl() {
  * ------------------------------------------------------------------ */
 
 /**
- * Importe un contenu CSV : détecte les colonnes, normalise et ajoute les lignes.
+ * Importe un contenu CSV (export 13 colonnes) : détecte les colonnes, normalise,
+ * applique le discount et ajoute les lignes. Déduplique sur Transaction ID pour
+ * qu'un ré-import du même fichier ne double pas les montants.
  * @param {string} csv  Contenu texte du fichier exporté.
- * @return {{imported:number, skipped:number, total:number}}
+ * @return {{imported:number, skipped:number, duplicates:number, total:number}}
  */
 function importCsv(csv) {
   if (!csv || !csv.trim()) throw new Error('Fichier vide.');
@@ -90,32 +113,64 @@ function importCsv(csv) {
   const head = rows[0].map(normalizeKey_);
   const col = {};
   Object.keys(HEADER_ALIASES).forEach(function (canon) {
-    const aliases = HEADER_ALIASES[canon].map(normalizeKey_);
+    const aliases = HEADER_ALIASES[canon];
     col[canon] = head.findIndex(function (h) { return aliases.indexOf(h) > -1; });
   });
-  if (col.montant < 0) throw new Error('Colonne « Montant » introuvable dans le fichier.');
+  if (col.amount < 0) throw new Error('Colonne « Amount » introuvable dans le fichier.');
+  if (col.date < 0)   throw new Error('Colonne « Transaction Date » introuvable dans le fichier.');
+
+  const sh = getSheet_();
+  const seen = existingTxIds_(sh);            // doublons inter-imports + intra-fichier
 
   const out = [];
-  let skipped = 0;
+  let skipped = 0, duplicates = 0;
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
-    if (r.join('').trim() === '') continue;          // ligne vide
-    const montant = parseAmount_(r[col.montant]);
-    if (!montant) { skipped++; continue; }            // ligne sans montant exploitable
+    if (r.join('').trim() === '') continue;             // ligne vide
+    const brut = parseAmount_(r[col.amount]);
+    if (!brut) { skipped++; continue; }                 // ligne sans montant exploitable
+
+    const txId = col.transactionId > -1 ? String(r[col.transactionId] || '').trim() : '';
+    if (txId) {
+      if (seen[txId]) { duplicates++; continue; }
+      seen[txId] = true;
+    }
+
     out.push([
-      col.date     > -1 ? (parseDate_(r[col.date]) || '') : '',
-      col.paroisse > -1 ? String(r[col.paroisse] || '').trim() : '',
-      col.type     > -1 ? String(r[col.type] || '').trim() || 'Quête' : 'Quête',
-      col.moyen    > -1 ? String(r[col.moyen] || '').trim() || 'Inconnu' : 'Inconnu',
-      montant
+      parseDate_(r[col.date]) || '',
+      col.terminalId   > -1 ? String(r[col.terminalId]   || '').trim() : '',
+      col.terminalName > -1 ? String(r[col.terminalName] || '').trim() : '',
+      col.projectName  > -1 ? String(r[col.projectName]  || '').trim() : '',
+      col.celebration  > -1 ? String(r[col.celebration]  || '').trim() : '',
+      col.location     > -1 ? String(r[col.location]     || '').trim() : '',
+      txId,
+      brut,
+      discount_(brut)
     ]);
   }
 
-  const sh = getSheet_();
   if (out.length) {
     sh.getRange(sh.getLastRow() + 1, 1, out.length, HEADERS.length).setValues(out);
   }
-  return { imported: out.length, skipped: skipped, total: Math.max(0, sh.getLastRow() - 1) };
+  return {
+    imported: out.length,
+    skipped: skipped,
+    duplicates: duplicates,
+    total: Math.max(0, sh.getLastRow() - 1)
+  };
+}
+
+/** Map des Transaction ID déjà présents dans la feuille (pour la déduplication). */
+function existingTxIds_(sh) {
+  const map = {};
+  const last = sh.getLastRow();
+  if (last < 2) return map;
+  const idCol = HEADERS.indexOf('Transaction ID') + 1;
+  sh.getRange(2, idCol, last - 1, 1).getValues().forEach(function (row) {
+    const v = String(row[0] || '').trim();
+    if (v) map[v] = true;
+  });
+  return map;
 }
 
 /** Détecte le séparateur le plus probable sur la 1re ligne. */
@@ -144,79 +199,79 @@ function parseAmount_(v) {
   return isNaN(n) ? 0 : n;
 }
 
-/** Parse une date (jj/mm/aaaa prioritaire, sinon natif). Renvoie Date ou null. */
+/**
+ * Applique le discount au montant brut.
+ * net = ROUNDDOWN(brut * 0,9885 ; 2) - 0,1   (arrondi inférieur à 2 décimales)
+ * Ex. : 10 € -> ROUNDDOWN(9,885;2)=9,88 -> 9,78 €.
+ */
+function discount_(brut) {
+  const truncated = Math.floor(brut * DISCOUNT_RATE * 100) / 100;
+  return Math.round((truncated - DISCOUNT_FIXED) * 100) / 100;
+}
+
+/** Parse une date (jj/mm/aaaa hh:mm:ss prioritaire, sinon natif). Renvoie Date ou null. */
 function parseDate_(v) {
   if (v instanceof Date) return v;
   const s = String(v || '').trim();
   if (!s) return null;
-  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if (m) {
     let y = m[3];
     if (y.length === 2) y = '20' + y;
-    return new Date(Number(y), Number(m[2]) - 1, Number(m[1]));
+    return new Date(Number(y), Number(m[2]) - 1, Number(m[1]),
+                    Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
   }
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
 
 /* ------------------------------------------------------------------ *
- *  Agrégation pour le tableau de bord
+ *  Lecture pour le tableau de bord (agrégation côté client)
  * ------------------------------------------------------------------ */
 
-/** Calcule KPIs et répartitions pour le dashboard. */
-function getDashboardData() {
+/**
+ * Renvoie les lignes normalisées et enrichies pour le dashboard.
+ * Les drapeaux dominical (dim) et matin sont pré-calculés en fuseau Europe/Paris.
+ * @return {{empty:boolean, rows:Array<Object>}}
+ */
+function getRows() {
   const sh = getSheet_();
   const last = sh.getLastRow();
-  if (last < 2) {
-    return { empty: true, kpis: emptyKpis_(), byMonth: [], byMoyen: [], byParoisse: [], recent: [] };
-  }
+  if (last < 2) return { empty: true, rows: [] };
+
+  const C = {};
+  HEADERS.forEach(function (h, i) { C[h] = i; });
 
   const values = sh.getRange(2, 1, last - 1, HEADERS.length).getValues();
-  const tz = 'Europe/Paris';
-  let total = 0;
-  const paroisse = {}, mois = {}, moyen = {};
-
-  values.forEach(function (row) {
-    const d = row[0], par = row[1] || '—', moy = row[3] || 'Inconnu', mt = Number(row[4]) || 0;
-    total += mt;
-    paroisse[par] = (paroisse[par] || 0) + mt;
-    moyen[moy] = (moyen[moy] || 0) + mt;
-    if (d instanceof Date) {
-      const key = Utilities.formatDate(d, tz, 'yyyy-MM');
-      mois[key] = (mois[key] || 0) + mt;
-    }
-  });
-
-  const count = values.length;
-  const recent = values.slice(-12).reverse().map(function (row) {
+  const rows = values.map(function (row) {
+    const d = row[C['Date']];
+    const isDate = d instanceof Date;
+    const frac = isDate ? (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400 : 1;
     return {
-      date: row[0] instanceof Date ? Utilities.formatDate(row[0], tz, 'dd/MM/yyyy') : '',
-      paroisse: row[1], type: row[2], moyen: row[3], montant: Number(row[4]) || 0
+      ts:           isDate ? d.getTime() : null,
+      mois:         isDate ? Utilities.formatDate(d, TZ, 'yyyy-MM') : '',
+      dateStr:      isDate ? Utilities.formatDate(d, TZ, 'dd/MM/yyyy') : '',
+      timeStr:      isDate ? Utilities.formatDate(d, TZ, 'HH:mm') : '',
+      terminalId:   row[C['Terminal ID']],
+      terminalName: row[C['Terminal Name']],
+      projet:       row[C['Project Name']],
+      celebration:  row[C['Celebration']],
+      location:     row[C['Location']],
+      txId:         row[C['Transaction ID']],
+      brut:         Number(row[C['Amount Brut']]) || 0,
+      net:          Number(row[C['Amount Net']]) || 0,
+      dim:          isDate ? (d.getDay() === 0) : false,   // WEEKDAY = 1 (dimanche)
+      matin:        frac < MORNING_THRESHOLD                // MOD(date;1) < 0,6
     };
   });
 
-  return {
-    empty: false,
-    kpis: { total: total, count: count, moyenne: count ? total / count : 0, paroisses: Object.keys(paroisse).length },
-    byMonth: Object.keys(mois).sort().map(function (k) { return { label: k, value: mois[k] }; }),
-    byMoyen: toSortedPairs_(moyen),
-    byParoisse: toSortedPairs_(paroisse).slice(0, 10),
-    recent: recent
-  };
+  return { empty: false, rows: rows };
 }
-
-function toSortedPairs_(obj) {
-  return Object.keys(obj)
-    .map(function (k) { return { label: k, value: obj[k] }; })
-    .sort(function (a, b) { return b.value - a.value; });
-}
-
-function emptyKpis_() { return { total: 0, count: 0, moyenne: 0, paroisses: 0 }; }
 
 /** Réinitialise toutes les données (conserve l'en-tête). */
 function resetData() {
   const sh = getSheet_();
   const last = sh.getLastRow();
   if (last > 1) sh.deleteRows(2, last - 1);
-  return getDashboardData();
+  return { empty: true, rows: [] };
 }

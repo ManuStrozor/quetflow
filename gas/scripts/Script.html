@@ -5,9 +5,14 @@
   const PALETTE = ['#5b4bd6', '#16b8a6', '#f5a524', '#ef5da8', '#3aa0ff', '#9b8cff', '#27c498', '#ff7a59'];
   const charts = {};
 
+  // Données brutes renvoyées par le serveur + état des filtres.
+  let ALL_ROWS = [];
+  const filters = { jour: 'all', moment: 'all' };
+
   /* ----- Démarrage ----- */
   document.addEventListener('DOMContentLoaded', function () {
     initImport();
+    initFilters();
     document.getElementById('resetBtn').addEventListener('click', onReset);
     google.script.run.withSuccessHandler(function (url) {
       document.getElementById('ssLink').href = url;
@@ -46,6 +51,7 @@
         .withSuccessHandler(function (res) {
           showLoader(false);
           let m = res.imported + ' ligne(s) importée(s)';
+          if (res.duplicates) m += ' · ' + res.duplicates + ' doublon(s)';
           if (res.skipped) m += ' · ' + res.skipped + ' ignorée(s)';
           m += ' · total : ' + res.total;
           toast('✅ ' + m);
@@ -58,39 +64,173 @@
     reader.readAsText(file);
   }
 
-  /* ----- Rafraîchissement du dashboard ----- */
+  /* ----- Filtres (segmented controls) ----- */
+  function initFilters() {
+    document.querySelectorAll('#filters .seg').forEach(function (seg) {
+      const key = seg.dataset.filter;
+      seg.addEventListener('click', function (e) {
+        const btn = e.target.closest('.seg-btn');
+        if (!btn) return;
+        filters[key] = btn.dataset.value;
+        seg.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+        render();
+      });
+    });
+  }
+
+  /* ----- Chargement des données ----- */
   function refresh() {
     showLoader(true);
     google.script.run
-      .withSuccessHandler(function (data) { showLoader(false); render(data); })
+      .withSuccessHandler(function (data) {
+        showLoader(false);
+        ALL_ROWS = (data && data.rows) || [];
+        render();
+      })
       .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
-      .getDashboardData();
+      .getRows();
   }
 
-  function render(data) {
-    const k = data.kpis;
-    document.getElementById('kpiTotal').textContent = fmtEur.format(k.total);
-    document.getElementById('kpiCount').textContent = fmtInt.format(k.count);
-    document.getElementById('kpiAvg').textContent = fmtEur2.format(k.moyenne);
-    document.getElementById('kpiPar').textContent = fmtInt.format(k.paroisses);
+  /* ----- Filtrage ----- */
+  function matchJour(r)   { return filters.jour === 'all' || (filters.jour === 'dim' ? r.dim : !r.dim); }
+  function matchMoment(r) { return filters.moment === 'all' || (filters.moment === 'matin' ? r.matin : !r.matin); }
+  function filtered()     { return ALL_ROWS.filter(function (r) { return matchJour(r) && matchMoment(r); }); }
+  // Lignes filtrées sur le jour seulement : base des tableaux qui ventilent eux-mêmes matin/soir.
+  function filteredJour() { return ALL_ROWS.filter(matchJour); }
 
-    renderRecent(data.recent);
-
-    const months = data.byMonth.map(function (p) { return formatMonth(p.label); });
-    lineChart('chartMonth', months, data.byMonth.map(function (p) { return p.value; }));
-    doughnutChart('chartMoyen', data.byMoyen.map(p => p.label), data.byMoyen.map(p => p.value));
-    barChart('chartParoisse', data.byParoisse.map(p => p.label), data.byParoisse.map(p => p.value));
+  /* ----- Rendu global ----- */
+  function render() {
+    const rows = filtered();
+    renderKpis(rows);
+    renderMonthChart(rows);
+    renderMomentChart(filteredJour());
+    renderBornes(filteredJour());
+    renderQuetes(rows);
+    renderRecent(rows);
   }
 
-  function renderRecent(rows) {
-    const body = document.getElementById('recentBody');
-    if (!rows || !rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="empty">Aucune donnée pour le moment.</td></tr>';
+  function renderKpis(rows) {
+    let total = 0;
+    const bornes = {};
+    rows.forEach(function (r) {
+      total += r.net;
+      if (r.projet) bornes[r.projet] = true;
+    });
+    const count = rows.length;
+    document.getElementById('kpiTotal').textContent = fmtEur.format(total);
+    document.getElementById('kpiCount').textContent = fmtInt.format(count);
+    document.getElementById('kpiAvg').textContent = fmtEur2.format(count ? total / count : 0);
+    document.getElementById('kpiBornes').textContent = fmtInt.format(Object.keys(bornes).length);
+  }
+
+  /* ----- Évolution mensuelle ----- */
+  function renderMonthChart(rows) {
+    const mois = {};
+    rows.forEach(function (r) { if (r.mois) mois[r.mois] = (mois[r.mois] || 0) + r.net; });
+    const labels = Object.keys(mois).sort();
+    lineChart('chartMonth', labels.map(formatMonth), labels.map(function (k) { return mois[k]; }));
+  }
+
+  /* ----- Répartition matin / soir (sur lignes filtrées par jour) ----- */
+  function renderMomentChart(rows) {
+    let matin = 0, soir = 0;
+    rows.forEach(function (r) { if (r.matin) matin += r.net; else soir += r.net; });
+    doughnutChart('chartMoment', ['Matin', 'Soir'], [matin, soir]);
+  }
+
+  /* ----- Bornes (par Project Name, ventilation matin/soir) ----- */
+  function renderBornes(rows) {
+    const acc = {};
+    rows.forEach(function (r) {
+      const key = r.projet;
+      if (!key) return;                          // « Bornes » = Project Name non vide
+      const b = acc[key] || (acc[key] = { count: 0, matin: 0, soir: 0, total: 0 });
+      b.count++;
+      b.total += r.net;
+      if (r.matin) b.matin += r.net; else b.soir += r.net;
+    });
+    const list = Object.keys(acc).map(function (k) { return Object.assign({ projet: k }, acc[k]); })
+      .sort(function (a, b) { return b.total - a.total; });
+
+    const body = document.getElementById('bornesBody');
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">Aucune borne pour ce filtre.</td></tr>';
       return;
     }
-    body.innerHTML = rows.map(function (r) {
-      return '<tr><td>' + esc(r.date) + '</td><td>' + esc(r.paroisse) + '</td><td>' + esc(r.type) +
-             '</td><td>' + esc(r.moyen) + '</td><td class="num">' + fmtEur2.format(r.montant) + '</td></tr>';
+    let html = list.map(function (b) {
+      return '<tr><td>' + esc(b.projet) + '</td><td class="num">' + fmtInt.format(b.count) +
+        '</td><td class="num">' + fmtEur2.format(b.matin) + '</td><td class="num">' + fmtEur2.format(b.soir) +
+        '</td><td class="num strong">' + fmtEur2.format(b.total) + '</td></tr>';
+    }).join('');
+    const tot = list.reduce(function (a, b) {
+      a.count += b.count; a.matin += b.matin; a.soir += b.soir; a.total += b.total; return a;
+    }, { count: 0, matin: 0, soir: 0, total: 0 });
+    html += '<tr class="row-total"><td>Total</td><td class="num">' + fmtInt.format(tot.count) +
+      '</td><td class="num">' + fmtEur2.format(tot.matin) + '</td><td class="num">' + fmtEur2.format(tot.soir) +
+      '</td><td class="num strong">' + fmtEur2.format(tot.total) + '</td></tr>';
+    body.innerHTML = html;
+  }
+
+  /* ----- Quêtes : tableau croisé Célébration × Lieu (total net) ----- */
+  function renderQuetes(rows) {
+    const cells = {};                            // cells[celebration][location] = net
+    const celebs = {}, locs = {};
+    rows.forEach(function (r) {
+      const c = r.celebration || '—', l = r.location || '—';
+      celebs[c] = true; locs[l] = true;
+      (cells[c] || (cells[c] = {}));
+      cells[c][l] = (cells[c][l] || 0) + r.net;
+    });
+    const celebList = Object.keys(celebs).sort();
+    const locList = Object.keys(locs).sort();
+
+    const table = document.getElementById('quetesTable');
+    const head = table.querySelector('thead');
+    const body = document.getElementById('quetesBody');
+
+    if (!celebList.length || !locList.length) {
+      head.innerHTML = '<tr><th>Célébration ＼ Lieu</th></tr>';
+      body.innerHTML = '<tr><td class="empty">Aucune quête pour ce filtre.</td></tr>';
+      return;
+    }
+
+    head.innerHTML = '<tr><th>Célébration ＼ Lieu</th>' +
+      locList.map(function (l) { return '<th class="num">' + esc(l) + '</th>'; }).join('') +
+      '<th class="num strong">Total</th></tr>';
+
+    const colTot = {};
+    let grand = 0;
+    const rowsHtml = celebList.map(function (c) {
+      let rowTot = 0;
+      const tds = locList.map(function (l) {
+        const v = (cells[c] && cells[c][l]) || 0;
+        rowTot += v; colTot[l] = (colTot[l] || 0) + v;
+        return '<td class="num">' + (v ? fmtEur2.format(v) : '·') + '</td>';
+      }).join('');
+      grand += rowTot;
+      return '<tr><th class="row-head">' + esc(c) + '</th>' + tds +
+        '<td class="num strong">' + fmtEur2.format(rowTot) + '</td></tr>';
+    }).join('');
+
+    const totalRow = '<tr class="row-total"><th class="row-head">Total</th>' +
+      locList.map(function (l) { return '<td class="num">' + fmtEur2.format(colTot[l] || 0) + '</td>'; }).join('') +
+      '<td class="num strong">' + fmtEur2.format(grand) + '</td></tr>';
+
+    body.innerHTML = rowsHtml + totalRow;
+  }
+
+  /* ----- Dernières transactions ----- */
+  function renderRecent(rows) {
+    const body = document.getElementById('recentBody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="7" class="empty">Aucune donnée pour ce filtre.</td></tr>';
+      return;
+    }
+    const recent = rows.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 15);
+    body.innerHTML = recent.map(function (r) {
+      return '<tr><td>' + esc(r.dateStr) + '</td><td>' + esc(r.timeStr) + '</td><td>' + esc(r.projet) +
+        '</td><td>' + esc(r.celebration) + '</td><td>' + esc(r.location) +
+        '</td><td class="num">' + fmtEur2.format(r.brut) + '</td><td class="num">' + fmtEur2.format(r.net) + '</td></tr>';
     }).join('');
   }
 
@@ -104,15 +244,6 @@
       data: { labels: labels, datasets: [{ data: values, borderColor: PALETTE[0],
         backgroundColor: 'rgba(91,75,214,.12)', fill: true, tension: .3, pointRadius: 3 }] },
       options: baseOpts(false, true)
-    });
-  }
-
-  function barChart(id, labels, values) {
-    destroyChart(id);
-    charts[id] = new Chart(byId(id), {
-      type: 'bar',
-      data: { labels: labels, datasets: [{ data: values, backgroundColor: PALETTE[0], borderRadius: 6 }] },
-      options: Object.assign(baseOpts(false, true), { indexAxis: 'y' })
     });
   }
 
@@ -148,7 +279,11 @@
     if (!confirm('Effacer toutes les données importées ? Cette action est irréversible.')) return;
     showLoader(true);
     google.script.run
-      .withSuccessHandler(function (data) { showLoader(false); toast('🧹 Données effacées.'); render(data); })
+      .withSuccessHandler(function (data) {
+        showLoader(false); toast('🧹 Données effacées.');
+        ALL_ROWS = (data && data.rows) || [];
+        render();
+      })
       .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
       .resetData();
   }

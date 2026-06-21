@@ -52,6 +52,20 @@
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   @media (max-width: 760px) { .grid-2 { grid-template-columns: 1fr; } }
 
+  /* Filtres */
+  .filters { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 14px 20px; }
+  .filter-group { display: flex; align-items: center; gap: 10px; }
+  .filter-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .seg-btn {
+    border: 0; background: transparent; color: var(--muted); cursor: pointer;
+    padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background .15s, color .15s;
+  }
+  .seg-btn:hover { color: var(--ink); }
+  .seg-btn.is-active { background: var(--primary); color: #fff; box-shadow: 0 1px 2px rgba(28,30,60,.18); }
+  .filter-hint { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .muted-note { font-weight: 400; font-size: 13px; color: var(--muted); }
+
   /* Import */
   .dropzone {
     border: 2px dashed #c7c9dd; border-radius: 12px; padding: 28px;
@@ -83,6 +97,15 @@
   .data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .data-table tr:last-child td { border-bottom: none; }
   .data-table .empty { text-align: center; color: var(--muted); padding: 24px; }
+  .data-table td.strong, .data-table th.strong { font-weight: 700; color: var(--ink); }
+  .data-table .row-total td, .data-table .row-total th {
+    border-top: 2px solid var(--border); font-weight: 700; color: var(--ink); background: #fafaff;
+  }
+
+  /* Tableau croisé (Quêtes) */
+  .cross-table th.row-head { text-align: left; color: var(--ink); font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .cross-table thead th:first-child { white-space: nowrap; }
+  .cross-table td.num { color: var(--ink); }
 
   /* Boutons */
   .btn-ghost {
