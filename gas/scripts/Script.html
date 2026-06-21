@@ -106,7 +106,6 @@
     renderMomentChart(filteredJour());
     renderBornes(filteredJour());
     renderQuetes(rows);
-    renderRecent(rows);
   }
 
   function renderKpis(rows) {
@@ -219,21 +218,6 @@
       '<td class="num strong">' + fmtEur2.format(grand) + '</td></tr>';
 
     body.innerHTML = rowsHtml + totalRow;
-  }
-
-  /* ----- Dernières transactions ----- */
-  function renderRecent(rows) {
-    const body = document.getElementById('recentBody');
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="7" class="empty">Aucune donnée pour ce filtre.</td></tr>';
-      return;
-    }
-    const recent = rows.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 15);
-    body.innerHTML = recent.map(function (r) {
-      return '<tr><td>' + esc(r.dateStr) + '</td><td>' + esc(r.timeStr) + '</td><td>' + esc(r.projet) +
-        '</td><td>' + esc(r.celebration) + '</td><td>' + esc(r.location) +
-        '</td><td class="num">' + fmtEur2.format(r.brut) + '</td><td class="num">' + fmtEur2.format(r.net) + '</td></tr>';
-    }).join('');
   }
 
   /* ----- Graphiques (Chart.js) ----- */

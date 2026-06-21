@@ -19,7 +19,8 @@ const MORNING_THRESHOLD = 0.6;
 
 // Colonnes canoniques stockées (l'ordre définit l'ordre des colonnes du Sheet).
 const HEADERS = ['Date', 'Terminal ID', 'Terminal Name', 'Project Name',
-                 'Celebration', 'Location', 'Transaction ID', 'Amount Brut', 'Amount Net'];
+                 'Celebration', 'Location', 'Transaction ID', 'Amount Brut', 'Amount Net',
+                 'Dominicale', 'Matin/Soir'];
 
 // Synonymes d'en-têtes d'export -> colonne canonique (clé), comparés après normalizeKey_.
 // Colonnes d'export ignorées : Client Name, Currency, Type, Total Transactions, Total Amount.
@@ -136,8 +137,9 @@ function importCsv(csv) {
       seen[txId] = true;
     }
 
+    const date = parseDate_(r[col.date]);
     out.push([
-      parseDate_(r[col.date]) || '',
+      date || '',
       col.terminalId   > -1 ? String(r[col.terminalId]   || '').trim() : '',
       col.terminalName > -1 ? String(r[col.terminalName] || '').trim() : '',
       col.projectName  > -1 ? String(r[col.projectName]  || '').trim() : '',
@@ -145,7 +147,9 @@ function importCsv(csv) {
       col.location     > -1 ? String(r[col.location]     || '').trim() : '',
       txId,
       brut,
-      discount_(brut)
+      discount_(brut),
+      date ? (isSunday_(date)  ? 'Oui'   : 'Non')  : '',
+      date ? (isMorning_(date) ? 'Matin' : 'Soir') : ''
     ]);
   }
 
@@ -209,7 +213,7 @@ function discount_(brut) {
   return Math.round((truncated - DISCOUNT_FIXED) * 100) / 100;
 }
 
-/** Parse une date (jj/mm/aaaa hh:mm:ss prioritaire, sinon natif). Renvoie Date ou null. */
+/** Parse une date au format mm/jj/aa hh:mm:ss (US, mois en premier). Renvoie Date ou null. */
 function parseDate_(v) {
   if (v instanceof Date) return v;
   const s = String(v || '').trim();
@@ -218,11 +222,20 @@ function parseDate_(v) {
   if (m) {
     let y = m[3];
     if (y.length === 2) y = '20' + y;
-    return new Date(Number(y), Number(m[2]) - 1, Number(m[1]),
+    return new Date(Number(y), Number(m[1]) - 1, Number(m[2]),   // m[1]=mois, m[2]=jour
                     Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0));
   }
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
+}
+
+/** Vrai si la date tombe un dimanche (WEEKDAY = 1). */
+function isSunday_(d) { return d instanceof Date && d.getDay() === 0; }
+
+/** Vrai si la transaction est du matin : MOD(date ; 1) < 0,6 (avant 14h24). */
+function isMorning_(d) {
+  if (!(d instanceof Date)) return false;
+  return (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400 < MORNING_THRESHOLD;
 }
 
 /* ------------------------------------------------------------------ *
@@ -246,7 +259,6 @@ function getRows() {
   const rows = values.map(function (row) {
     const d = row[C['Date']];
     const isDate = d instanceof Date;
-    const frac = isDate ? (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400 : 1;
     return {
       ts:           isDate ? d.getTime() : null,
       mois:         isDate ? Utilities.formatDate(d, TZ, 'yyyy-MM') : '',
@@ -260,8 +272,8 @@ function getRows() {
       txId:         row[C['Transaction ID']],
       brut:         Number(row[C['Amount Brut']]) || 0,
       net:          Number(row[C['Amount Net']]) || 0,
-      dim:          isDate ? (d.getDay() === 0) : false,   // WEEKDAY = 1 (dimanche)
-      matin:        frac < MORNING_THRESHOLD                // MOD(date;1) < 0,6
+      dim:          isSunday_(d),     // WEEKDAY = 1 (dimanche)
+      matin:        isMorning_(d)     // MOD(date;1) < 0,6
     };
   });
 
