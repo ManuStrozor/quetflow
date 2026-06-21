@@ -7,7 +7,7 @@
  * et filtre côté client (Bornes, Quêtes, ventilation matin/soir & dominical).
  */
 
-const SHEET_NAME = 'Quetes';
+const SHEET_NAME = 'Transactions';
 const PROP_SS_ID = 'QUETFLOW_SS_ID';
 const TZ = 'Europe/Paris';
 
@@ -210,7 +210,7 @@ function parseAmount_(v) {
  */
 function discount_(brut) {
   const truncated = Math.floor(brut * DISCOUNT_RATE * 100) / 100;
-  return Math.round((truncated - DISCOUNT_FIXED) * 100) / 100;
+  return truncated - DISCOUNT_FIXED;
 }
 
 /** Parse une date au format mm/jj/aa hh:mm:ss (US, mois en premier). Renvoie Date ou null. */

@@ -125,7 +125,9 @@
   /* ----- Évolution mensuelle ----- */
   function renderMonthChart(rows) {
     const mois = {};
-    rows.forEach(function (r) { if (r.mois) mois[r.mois] = (mois[r.mois] || 0) + r.net; });
+    rows.forEach(r => {
+      if (r.mois) mois[r.mois] = (mois[r.mois] || 0) + r.net;
+    });
     const labels = Object.keys(mois).sort();
     lineChart('chartMonth', labels.map(formatMonth), labels.map(function (k) { return mois[k]; }));
   }
@@ -254,7 +256,8 @@
       }
     };
     if (eurAxis) {
-      opts.scales = { x: { ticks: { callback: tickEur } }, y: { ticks: { callback: tickEur } } };
+      // Seul l'axe des valeurs (y) est en euros ; l'axe x reste catégoriel (les mois).
+      opts.scales = { y: { ticks: { callback: tickEur } } };
     }
     return opts;
   }
