@@ -109,16 +109,17 @@
   }
 
   function renderKpis(rows) {
-    let total = 0;
+    let total = 0, totalBrut = 0;
     const bornes = {};
     rows.forEach(function (r) {
       total += r.net;
+      totalBrut += r.brut;
       if (r.projet) bornes[r.projet] = true;
     });
     const count = rows.length;
     document.getElementById('kpiTotal').textContent = fmtEur.format(total);
     document.getElementById('kpiCount').textContent = fmtInt.format(count);
-    document.getElementById('kpiAvg').textContent = fmtEur2.format(count ? total / count : 0);
+    document.getElementById('kpiAvg').textContent = fmtEur2.format(count ? totalBrut / count : 0);   // moyenne sur le brut
     document.getElementById('kpiBornes').textContent = fmtInt.format(Object.keys(bornes).length);
   }
 
