@@ -41,16 +41,23 @@
   .ss-link:hover { background: rgba(255,255,255,.28); }
 
   /* Mise en page */
-  .container { max-width: 1080px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  /* minmax(0, 1fr) (et non 1fr/auto) : autorise les colonnes à rétrécir sous la
+     largeur de leur contenu — sinon les grands tableaux et les canvas débordent
+     en largeur sur mobile (min-width auto des items de grille). */
+  .container {
+    max-width: 1080px; width: 100%; margin: 0 auto; padding: 24px;
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px;
+  }
   .card {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px;
+    min-width: 0;
   }
   .card h2, .card h3 { margin: 0 0 14px; font-size: 16px; }
-  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
   .card-head h3 { margin: 0; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media (max-width: 760px) { .grid-2 { grid-template-columns: 1fr; } }
+  .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  @media (max-width: 760px) { .grid-2 { grid-template-columns: minmax(0, 1fr); } }
 
   /* Filtres */
   .filters { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 14px 20px; }
@@ -63,7 +70,6 @@
   }
   .seg-btn:hover { color: var(--ink); }
   .seg-btn.is-active { background: var(--primary); color: #fff; box-shadow: 0 1px 2px rgba(28,30,60,.18); }
-  .filter-hint { margin-left: auto; font-size: 12px; color: var(--muted); }
   .muted-note { font-weight: 400; font-size: 13px; color: var(--muted); }
 
   /* Import */
@@ -79,8 +85,8 @@
   .dropzone .hint { font-size: 12.5px; }
 
   /* KPIs */
-  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-  @media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+  @media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .kpi { display: flex; flex-direction: column; gap: 6px; }
   .kpi-label { font-size: 13px; color: var(--muted); }
   .kpi-value { font-size: 26px; font-weight: 700; color: var(--primary-d); }
@@ -146,4 +152,19 @@
     border-radius: 50%; animation: spin .8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Mobile : resserre les marges et l'en-tête pour éviter tout débordement */
+  @media (max-width: 560px) {
+    .app-header { padding: 14px 16px; gap: 10px; }
+    .brand { gap: 10px; min-width: 0; }
+    .brand .logo { font-size: 26px; }
+    .brand h1 { font-size: 19px; }
+    .tagline { font-size: 12px; }
+    .dropzone .hint { display: none; }
+    .ss-link { flex: none; padding: 7px 12px; font-size: 13px; white-space: nowrap; }
+    .container { padding: 16px; gap: 16px; }
+    .card { padding: 16px; }
+    .kpis { gap: 12px; }
+    .kpi-value { font-size: 22px; }
+  }
 </style>
