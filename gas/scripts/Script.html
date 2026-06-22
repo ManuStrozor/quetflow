@@ -1,6 +1,7 @@
 <script>
   const fmtEur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
   const fmtEur2 = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+  const fmtEurFlex = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const fmtInt = new Intl.NumberFormat('fr-FR');
   const PALETTE = ['#5b4bd6', '#16b8a6', '#f5a524', '#ef5da8', '#3aa0ff', '#9b8cff', '#27c498', '#ff7a59'];
   const charts = {};
@@ -103,7 +104,7 @@
     const rows = filtered();
     renderKpis(rows);
     renderMonthChart(rows);
-    renderMomentChart(filteredJour());
+    renderBrutChart(rows);
     renderBornes(filteredJour());
     renderQuetes(rows);
   }
@@ -133,11 +134,13 @@
     lineChart('chartMonth', labels.map(formatMonth), labels.map(function (k) { return mois[k]; }));
   }
 
-  /* ----- Répartition matin / soir (sur lignes filtrées par jour) ----- */
-  function renderMomentChart(rows) {
-    let matin = 0, soir = 0;
-    rows.forEach(function (r) { if (r.matin) matin += r.net; else soir += r.net; });
-    doughnutChart('chartMoment', ['Matin', 'Soir'], [matin, soir]);
+  /* ----- Répartition des montants brut (nb de transactions par valeur) ----- */
+  function renderBrutChart(rows) {
+    const acc = {};
+    rows.forEach(function (r) { if (r.brut) acc[r.brut] = (acc[r.brut] || 0) + 1; });
+    const vals = Object.keys(acc).map(Number).sort(function (a, b) { return a - b; });
+    barChart('chartBrut', vals.map(function (v) { return fmtEurFlex.format(v); }),
+                          vals.map(function (v) { return acc[v]; }));
   }
 
   /* ----- Bornes (par Project Name, ventilation matin/soir) ----- */
@@ -236,12 +239,24 @@
     });
   }
 
-  function doughnutChart(id, labels, values) {
+  // Histogramme : axe Y = nombre de transactions (pas des euros), axe X = montants.
+  function barChart(id, labels, values) {
     destroyChart(id);
     charts[id] = new Chart(byId(id), {
-      type: 'doughnut',
-      data: { labels: labels, datasets: [{ data: values, backgroundColor: PALETTE, borderWidth: 0 }] },
-      options: baseOpts(true, false)
+      type: 'bar',
+      data: { labels: labels, datasets: [{ data: values, backgroundColor: PALETTE[0],
+        borderRadius: 6, maxBarThickness: 48 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function (c) {
+            const n = c.parsed.y;
+            return ' ' + fmtInt.format(n) + ' transaction' + (n > 1 ? 's' : '');
+          } } }
+        },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
     });
   }
 
