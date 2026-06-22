@@ -294,10 +294,18 @@ function getRows() {
   return { empty: false, rows: rows };
 }
 
-/** Réinitialise toutes les données (conserve l'en-tête). */
+/**
+ * Réinitialise toutes les données (conserve l'en-tête).
+ * On efface le contenu des lignes de données, puis on réduit la feuille — en
+ * gardant TOUJOURS une ligne non figée (ligne 2). Sheets interdit en effet de
+ * supprimer toutes les lignes non figées (l'en-tête en ligne 1 étant figé),
+ * ce qui faisait échouer un deleteRows global après un gros import.
+ */
 function resetData() {
   const sh = getSheet_();
   const last = sh.getLastRow();
-  if (last > 1) sh.deleteRows(2, last - 1);
+  if (last > 1) sh.getRange(2, 1, last - 1, HEADERS.length).clearContent();
+  const maxRows = sh.getMaxRows();
+  if (maxRows > 2) sh.deleteRows(3, maxRows - 2);
   return { empty: true, rows: [] };
 }
