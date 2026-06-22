@@ -15,9 +15,11 @@
     initImport();
     initFilters();
     document.getElementById('resetBtn').addEventListener('click', onReset);
-    google.script.run.withSuccessHandler(function (url) {
-      document.getElementById('ssLink').href = url;
-    }).getStorageUrl();
+    progressStart();
+    google.script.run
+      .withSuccessHandler(function (url) { document.getElementById('ssLink').href = url; progressDone(); })
+      .withFailureHandler(progressDone)
+      .getStorageUrl();
     refresh();
   });
 
@@ -47,10 +49,10 @@
   function handleFile(file) {
     const reader = new FileReader();
     reader.onload = function (e) {
-      showLoader(true);
+      progressStart();
       google.script.run
         .withSuccessHandler(function (res) {
-          showLoader(false);
+          progressDone();
           let m = res.imported + ' ligne(s) importée(s)';
           if (res.duplicates) m += ' · ' + res.duplicates + ' doublon(s)';
           if (res.skipped) m += ' · ' + res.skipped + ' ignorée(s)';
@@ -58,7 +60,7 @@
           toast('✅ ' + m);
           refresh();
         })
-        .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
+        .withFailureHandler(function (err) { progressDone(); toast('⚠️ ' + err.message, true); })
         .importCsv(e.target.result);
     };
     reader.onerror = function () { toast('⚠️ Lecture du fichier impossible.', true); };
@@ -81,81 +83,118 @@
 
   /* ----- Chargement des données ----- */
   function refresh() {
-    showLoader(true);
+    progressStart();
     google.script.run
       .withSuccessHandler(function (data) {
-        showLoader(false);
-        ALL_ROWS = (data && data.rows) || [];
+        ALL_ROWS = hydrate((data && data.rows) || []);
         render();
+        progressDone();
       })
-      .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
+      .withFailureHandler(function (err) { progressDone(); toast('⚠️ ' + err.message, true); })
       .getRows();
   }
 
-  /* ----- Filtrage ----- */
-  function matchJour(r)   { return filters.jour === 'all' || (filters.jour === 'dim' ? r.dim : !r.dim); }
-  function matchMoment(r) { return filters.moment === 'all' || (filters.moment === 'matin' ? r.matin : !r.matin); }
-  function filtered()     { return ALL_ROWS.filter(function (r) { return matchJour(r) && matchMoment(r); }); }
-  // Lignes filtrées sur le jour seulement : base des tableaux qui ventilent eux-mêmes matin/soir.
-  function filteredJour() { return ALL_ROWS.filter(matchJour); }
-
-  /* ----- Rendu global ----- */
-  function render() {
-    const rows = filtered();
-    renderKpis(rows);
-    renderMonthChart(rows);
-    renderBrutChart(rows);
-    renderBornes(filteredJour());
-    renderQuetes(rows);
+  // Réhydrate l'encodage positionnel renvoyé par getRows() (cf. ordre des colonnes
+  // documenté côté serveur). Une seule allocation par ligne, boucle indexée (rapide).
+  function hydrate(rows) {
+    const out = new Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const a = rows[i];
+      out[i] = { net: a[0], brut: a[1], projet: a[2], location: a[3],
+                 celebration: a[4], mois: a[5], dim: a[6], matin: a[7] };
+    }
+    return out;
   }
 
-  function renderKpis(rows) {
-    let total = 0, totalBrut = 0;
-    const bornes = {};
-    rows.forEach(function (r) {
-      total += r.net;
-      totalBrut += r.brut;
-      if (r.projet) bornes[r.projet] = true;
-    });
-    const count = rows.length;
-    document.getElementById('kpiTotal').textContent = fmtEur.format(total);
-    document.getElementById('kpiCount').textContent = fmtInt.format(count);
-    document.getElementById('kpiAvg').textContent = fmtEur2.format(count ? totalBrut / count : 0);   // moyenne sur le brut
-    document.getElementById('kpiBornes').textContent = fmtInt.format(Object.keys(bornes).length);
+  /* ----- Rendu global ----- */
+  // Tout est dérivé d'UNE SEULE passe sur ALL_ROWS (aggregate), au lieu de
+  // re-filtrer et re-boucler dans chaque renderXxx : essentiel sur gros volumes.
+  function render() {
+    const agg = aggregate();
+    renderKpis(agg);
+    renderMonthChart(agg);
+    renderBrutChart(agg);
+    renderBornes(agg);
+    renderQuetes(agg);
+  }
+
+  /**
+   * Agrège ALL_ROWS en une passe pour tous les blocs du tableau de bord.
+   * - Filtre « jour » : appliqué d'abord ; alimente les Bornes (qui ventilent
+   *   elles-mêmes matin/soir, donc indépendantes du filtre « moment »).
+   * - Filtre « moment » : appliqué ensuite ; alimente KPIs, graphiques et Quêtes.
+   */
+  function aggregate() {
+    const jour = filters.jour, moment = filters.moment;
+    let total = 0, totalBrut = 0, count = 0;
+    const bornesSet = {};            // projets distincts (KPI Bornes actives)
+    const mois = {};                 // mois -> net
+    const brut = {};                 // valeur brute -> nb de transactions
+    const bornes = {};               // projet -> { count, matin, soir, total }
+    const quetes = {};               // celeb -> { lieu -> net }
+    const celebs = {}, locs = {};
+
+    const rows = ALL_ROWS;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (jour !== 'all' && (jour === 'dim' ? !r.dim : r.dim)) continue;
+
+      // Bornes : filtre « jour » seul, ventilation matin/soir interne.
+      if (r.projet) {
+        const b = bornes[r.projet] || (bornes[r.projet] = { count: 0, matin: 0, soir: 0, total: 0 });
+        b.count++; b.total += r.net;
+        if (r.matin) b.matin += r.net; else b.soir += r.net;
+      }
+
+      if (moment !== 'all' && (moment === 'matin' ? !r.matin : r.matin)) continue;
+
+      // KPIs
+      total += r.net; totalBrut += r.brut; count++;
+      if (r.projet) bornesSet[r.projet] = true;
+      // Évolution mensuelle
+      if (r.mois) mois[r.mois] = (mois[r.mois] || 0) + r.net;
+      // Répartition des montants brut
+      if (r.brut) brut[r.brut] = (brut[r.brut] || 0) + 1;
+      // Quêtes : Célébration × Lieu (Location non vide)
+      const l = r.location ? String(r.location).trim() : '';
+      if (l) {
+        const c = r.celebration || '—';
+        celebs[c] = true; locs[l] = true;
+        const cc = quetes[c] || (quetes[c] = {});
+        cc[l] = (cc[l] || 0) + r.net;
+      }
+    }
+
+    return { total: total, totalBrut: totalBrut, count: count,
+             bornesCount: Object.keys(bornesSet).length,
+             mois: mois, brut: brut, bornes: bornes,
+             quetes: quetes, celebs: celebs, locs: locs };
+  }
+
+  function renderKpis(a) {
+    document.getElementById('kpiTotal').textContent = fmtEur.format(a.total);
+    document.getElementById('kpiCount').textContent = fmtInt.format(a.count);
+    document.getElementById('kpiAvg').textContent = fmtEur2.format(a.count ? a.totalBrut / a.count : 0);   // moyenne sur le brut
+    document.getElementById('kpiBornes').textContent = fmtInt.format(a.bornesCount);
   }
 
   /* ----- Évolution mensuelle ----- */
-  function renderMonthChart(rows) {
-    const mois = {};
-    rows.forEach(r => {
-      if (r.mois) mois[r.mois] = (mois[r.mois] || 0) + r.net;
-    });
-    const labels = Object.keys(mois).sort();
-    lineChart('chartMonth', labels.map(formatMonth), labels.map(function (k) { return mois[k]; }));
+  function renderMonthChart(a) {
+    const labels = Object.keys(a.mois).sort();
+    lineChart('chartMonth', labels.map(formatMonth), labels.map(function (k) { return a.mois[k]; }));
   }
 
   /* ----- Répartition des montants brut (nb de transactions par valeur) ----- */
-  function renderBrutChart(rows) {
-    const acc = {};
-    rows.forEach(function (r) { if (r.brut) acc[r.brut] = (acc[r.brut] || 0) + 1; });
-    const vals = Object.keys(acc).map(Number).sort(function (a, b) { return a - b; });
+  function renderBrutChart(a) {
+    const vals = Object.keys(a.brut).map(Number).sort(function (x, y) { return x - y; });
     barChart('chartBrut', vals.map(function (v) { return fmtEurFlex.format(v); }),
-                          vals.map(function (v) { return acc[v]; }));
+                          vals.map(function (v) { return a.brut[v]; }));
   }
 
   /* ----- Bornes (par Project Name, ventilation matin/soir) ----- */
-  function renderBornes(rows) {
-    const acc = {};
-    rows.forEach(function (r) {
-      const key = r.projet;
-      if (!key) return;                          // « Bornes » = Project Name non vide
-      const b = acc[key] || (acc[key] = { count: 0, matin: 0, soir: 0, total: 0 });
-      b.count++;
-      b.total += r.net;
-      if (r.matin) b.matin += r.net; else b.soir += r.net;
-    });
-    const list = Object.keys(acc).map(function (k) { return Object.assign({ projet: k }, acc[k]); })
-      .sort(function (a, b) { return b.total - a.total; });
+  function renderBornes(a) {
+    const list = Object.keys(a.bornes).map(function (k) { return Object.assign({ projet: k }, a.bornes[k]); })
+      .sort(function (x, y) { return y.total - x.total; });
 
     const body = document.getElementById('bornesBody');
     if (!list.length) {
@@ -177,19 +216,10 @@
   }
 
   /* ----- Quêtes : tableau croisé Célébration × Lieu (total net) ----- */
-  function renderQuetes(rows) {
-    const cells = {};                            // cells[celebration][location] = net
-    const celebs = {}, locs = {};
-    rows.forEach(function (r) {
-      const l = String(r.location || '').trim();
-      if (!l) return;                            // Quêtes = Location non vide
-      const c = r.celebration || '—';
-      celebs[c] = true; locs[l] = true;
-      (cells[c] || (cells[c] = {}));
-      cells[c][l] = (cells[c][l] || 0) + r.net;
-    });
-    const celebList = Object.keys(celebs).sort();
-    const locList = Object.keys(locs).sort();
+  function renderQuetes(a) {
+    const cells = a.quetes;                       // cells[celebration][location] = net
+    const celebList = Object.keys(a.celebs).sort();
+    const locList = Object.keys(a.locs).sort();
 
     const table = document.getElementById('quetesTable');
     const head = table.querySelector('thead');
@@ -227,10 +257,17 @@
   }
 
   /* ----- Graphiques (Chart.js) ----- */
-  function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+  // Mise à jour en place : on ne recrée pas le graphique à chaque filtre (coûteux),
+  // on remplace seulement ses données. 'none' = pas d'animation → rendu instantané.
+  function updateChart(id, labels, values) {
+    const c = charts[id];
+    c.data.labels = labels;
+    c.data.datasets[0].data = values;
+    c.update('none');
+  }
 
   function lineChart(id, labels, values) {
-    destroyChart(id);
+    if (charts[id]) return updateChart(id, labels, values);
     charts[id] = new Chart(byId(id), {
       type: 'line',
       data: { labels: labels, datasets: [{ data: values, borderColor: PALETTE[0],
@@ -241,13 +278,13 @@
 
   // Histogramme : axe Y = nombre de transactions (pas des euros), axe X = montants.
   function barChart(id, labels, values) {
-    destroyChart(id);
+    if (charts[id]) return updateChart(id, labels, values);
     charts[id] = new Chart(byId(id), {
       type: 'bar',
       data: { labels: labels, datasets: [{ data: values, backgroundColor: PALETTE[0],
         borderRadius: 6, maxBarThickness: 48 }] },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false, animation: false,
         plugins: {
           legend: { display: false },
           tooltip: { callbacks: { label: function (c) {
@@ -262,7 +299,7 @@
 
   function baseOpts(showLegend, eurAxis) {
     const opts = {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {
         legend: { display: showLegend, position: 'bottom' },
         tooltip: { callbacks: { label: function (c) {
@@ -282,20 +319,52 @@
   /* ----- Effacer ----- */
   function onReset() {
     if (!confirm('Effacer toutes les données importées ? Cette action est irréversible.')) return;
-    showLoader(true);
+    progressStart();
     google.script.run
       .withSuccessHandler(function (data) {
-        showLoader(false); toast('🧹 Données effacées.');
-        ALL_ROWS = (data && data.rows) || [];
+        toast('🧹 Données effacées.');
+        ALL_ROWS = hydrate((data && data.rows) || []);
         render();
+        progressDone();
       })
-      .withFailureHandler(function (err) { showLoader(false); toast('⚠️ ' + err.message, true); })
+      .withFailureHandler(function (err) { progressDone(); toast('⚠️ ' + err.message, true); })
       .resetData();
   }
 
   /* ----- Utilitaires ----- */
   function byId(id) { return document.getElementById(id); }
-  function showLoader(v) { document.getElementById('loader').hidden = !v; }
+
+  /* ----- Indicateurs de chargement (barre en haut + loader central) -----
+     Pas de progression réelle exposée par google.script.run : on simule une
+     montée asymptotique vers ~92 %, puis on complète à 100 % à la fin. Un
+     compteur gère les requêtes concurrentes (tout disparaît au dernier appel). */
+  let _progPending = 0, _progTimer = null, _progVal = 0;
+  function progressStart() {
+    _progPending++;
+    byId('loader').hidden = false;
+    if (_progPending > 1) return;
+    const fill = byId('topbarFill');
+    _progVal = 8;
+    fill.style.opacity = '1';
+    fill.style.width = '8%';
+    clearInterval(_progTimer);
+    _progTimer = setInterval(function () {
+      _progVal += (92 - _progVal) * 0.12;          // approche lente de 92 %
+      fill.style.width = _progVal.toFixed(1) + '%';
+    }, 180);
+  }
+  function progressDone() {
+    _progPending = Math.max(0, _progPending - 1);
+    if (_progPending > 0) return;
+    byId('loader').hidden = true;
+    const fill = byId('topbarFill');
+    clearInterval(_progTimer);
+    fill.style.width = '100%';
+    setTimeout(function () {
+      fill.style.opacity = '0';
+      setTimeout(function () { fill.style.width = '0'; }, 250);
+    }, 220);
+  }
 
   let toastTimer = null;
   function toast(msg, isErr) {

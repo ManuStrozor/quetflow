@@ -9,7 +9,9 @@
 
 const SHEET_NAME = 'Transactions';
 const PROP_SS_ID = 'QUETFLOW_SS_ID';
-const TZ = 'Europe/Paris';
+// Fuseau du runtime (cf. appsscript.json "timeZone") : les getters Date locaux
+// (getDay/getHours/getMonth) raisonnent donc en Europe/Paris, ce qui évite tout
+// Utilities.formatDate par ligne lors de la lecture du tableau de bord.
 
 // Discount appliqué au montant brut : net = ROUNDDOWN(brut * RATE ; 2) - FIXED.
 const DISCOUNT_RATE = 0.9885;
@@ -244,9 +246,18 @@ function isMorning_(d) {
  * ------------------------------------------------------------------ */
 
 /**
- * Renvoie les lignes normalisées et enrichies pour le dashboard.
- * Les drapeaux dominical (dim) et matin sont pré-calculés en fuseau Europe/Paris.
- * @return {{empty:boolean, rows:Array<Object>}}
+ * Renvoie les lignes normalisées pour le dashboard, en encodage POSITIONNEL
+ * (un tableau par ligne, pas un objet) afin de réduire la taille sérialisée et
+ * le temps de transfert sur de gros volumes. Le client réhydrate via hydrate().
+ *
+ * Ordre des colonnes (doit rester synchronisé avec hydrate() côté client) :
+ *   [0] net  [1] brut  [2] projet  [3] location  [4] celebration  [5] mois  [6] dim  [7] matin
+ *
+ * Perf : on n'émet que les 8 champs réellement consommés par le tableau de bord
+ * et on évite tout Utilities.formatDate (lent, ~1 appel/ligne) — le mois est
+ * calculé à partir des composantes de la Date, le runtime étant déjà en
+ * Europe/Paris (cf. appsscript.json), comme isSunday_/isMorning_ le supposent.
+ * @return {{empty:boolean, rows:Array<Array>}}
  */
 function getRows() {
   const sh = getSheet_();
@@ -255,28 +266,30 @@ function getRows() {
 
   const C = {};
   HEADERS.forEach(function (h, i) { C[h] = i; });
+  const iDate = C['Date'], iProj = C['Project Name'], iCeleb = C['Celebration'],
+        iLoc = C['Location'], iBrut = C['Amount Brut'], iNet = C['Amount Net'];
 
   const values = sh.getRange(2, 1, last - 1, HEADERS.length).getValues();
-  const rows = values.map(function (row) {
-    const d = row[C['Date']];
-    const isDate = d instanceof Date;
-    return {
-      ts:           isDate ? d.getTime() : null,
-      mois:         isDate ? Utilities.formatDate(d, TZ, 'yyyy-MM') : '',
-      dateStr:      isDate ? Utilities.formatDate(d, TZ, 'dd/MM/yyyy') : '',
-      timeStr:      isDate ? Utilities.formatDate(d, TZ, 'HH:mm') : '',
-      terminalId:   row[C['Terminal ID']],
-      terminalName: row[C['Terminal Name']],
-      projet:       row[C['Project Name']],
-      celebration:  row[C['Celebration']],
-      location:     row[C['Location']],
-      txId:         row[C['Transaction ID']],
-      brut:         Number(row[C['Amount Brut']]) || 0,
-      net:          Number(row[C['Amount Net']]) || 0,
-      dim:          isSunday_(d),     // WEEKDAY = 1 (dimanche)
-      matin:        isMorning_(d)     // MOD(date;1) < 0,6
-    };
-  });
+  const rows = new Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i];
+    const d = row[iDate];
+    let mois = '';
+    if (d instanceof Date) {
+      const m = d.getMonth() + 1;                       // mois local (Europe/Paris)
+      mois = d.getFullYear() + '-' + (m < 10 ? '0' + m : m);
+    }
+    rows[i] = [
+      Number(row[iNet]) || 0,
+      Number(row[iBrut]) || 0,
+      row[iProj],
+      row[iLoc],
+      row[iCeleb],
+      mois,
+      isSunday_(d),                                      // WEEKDAY = 1 (dimanche)
+      isMorning_(d)                                      // MOD(date;1) < 0,6
+    ];
+  }
 
   return { empty: false, rows: rows };
 }

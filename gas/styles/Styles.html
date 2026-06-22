@@ -122,9 +122,21 @@
   }
   .toast.err { background: #c0392b; }
 
-  /* Loader */
+  /* Barre de progression (en haut de l'app) */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; height: 6px;
+    z-index: 100; pointer-events: none; background: rgba(91, 75, 214, .1);
+  }
+  .topbar-fill {
+    display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--primary));
+    box-shadow: 0 0 12px rgba(91, 75, 214, .85), 0 1px 4px rgba(91, 75, 214, .6);
+    transition: width .2s ease, opacity .25s ease;
+  }
+
+  /* Loader central (overlay plein écran) */
   .loader {
-    position: fixed; inset: 0; background: rgba(244,245,251,.6);
+    position: fixed; inset: 0; background: rgba(244, 245, 251, .6);
     display: flex; align-items: center; justify-content: center; z-index: 60;
   }
   /* L'attribut [hidden] ne suffit pas : .loader impose display:flex. On le rétablit. */
