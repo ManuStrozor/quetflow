@@ -60,7 +60,7 @@ function include(filename) {
 
 /** Récupère (ou crée au 1er lancement) le classeur de stockage. */
 function getSpreadsheet_() {
-  const props = PropertiesService.getScriptProperties();
+  const props = PropertiesService.getUserProperties();
   const id = props.getProperty(PROP_SS_ID);
   if (id) {
     try { return SpreadsheetApp.openById(id); } catch (e) { /* recréé ci-dessous */ }
