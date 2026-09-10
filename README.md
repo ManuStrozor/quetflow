@@ -1,6 +1,6 @@
 # QuetFlow
 
-**QuetFlow** est une application web basée sur Google Apps Script permettant de centraliser, transformer et visualiser les données de quêtes paroissiales à partir de fichiers d'export (CSV, Excel).
+**QuetFlow** est une application web basée sur Google Apps Script permettant de centraliser, transformer et visualiser les données de quêtes paroissiales à partir de fichiers d'export Excel (.xlsx).
 
 ## 🎯 Objectif
 
@@ -8,7 +8,7 @@ Faciliter le travail des responsables comptables en automatisant le traitement d
 
 ## ⚙️ Fonctionnalités
 
-- 📥 Import de fichiers CSV / XLSX issus de systèmes externes
+- 📥 Import de fichiers Excel (.xlsx) issus de systèmes externes
 - 🔄 Transformation et normalisation des données
 - 📊 Génération de tableaux croisés dynamiques
 - 📈 Visualisation des indicateurs clés via une interface web
@@ -27,7 +27,7 @@ Faciliter le travail des responsables comptables en automatisant le traitement d
 
 ## 🚀 Usage
 
-1. Importer un fichier d’export (CSV/XLSX)
+1. Importer un fichier d’export Excel (.xlsx)
 2. Laisser QuetFlow traiter et structurer les données
 3. Consulter les indicateurs et tableaux de bord via la web app
 

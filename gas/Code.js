@@ -2,7 +2,7 @@
  * QuetFlow — Web app Google Apps Script
  * Import, normalisation et visualisation des données de quêtes paroissiales.
  *
- * Couche serveur : sert l'app web, importe les exports CSV (13 colonnes) dans un
+ * Couche serveur : sert l'app web, importe les exports Excel (.xlsx) dans un
  * Google Sheet et renvoie les lignes normalisées au tableau de bord, qui agrège
  * et filtre côté client (Bornes, Quêtes, ventilation matin/soir & dominical).
  */
@@ -102,16 +102,16 @@ function getStorageUrl() {
  * ------------------------------------------------------------------ */
 
 /**
- * Importe un contenu CSV (export 13 colonnes) : détecte les colonnes, normalise,
- * applique le discount et ajoute les lignes. Déduplique sur Transaction ID pour
- * qu'un ré-import du même fichier ne double pas les montants.
- * @param {string} csv  Contenu texte du fichier exporté.
+ * Importe un export Excel (.xlsx) : détecte les colonnes, normalise, applique le
+ * discount et ajoute les lignes. Déduplique sur Transaction ID pour qu'un
+ * ré-import du même fichier ne double pas les montants.
+ * @param {{name:string, data:string}} payload  Nom du fichier + contenu base64.
  * @return {{imported:number, skipped:number, duplicates:number, total:number}}
  */
-function importCsv(csv) {
-  if (!csv || !csv.trim()) throw new Error('Fichier vide.');
+function importXlsx(payload) {
+  if (!payload || !payload.data) throw new Error('Fichier vide.');
 
-  const rows = Utilities.parseCsv(csv, detectDelimiter_(csv));
+  const rows = readXlsxRows_(payload.data, payload.name);
   if (rows.length < 2) throw new Error('Aucune donnée détectée (en-tête + lignes attendus).');
 
   const head = rows[0].map(normalizeKey_);
@@ -180,12 +180,32 @@ function existingTxIds_(sh) {
   return map;
 }
 
-/** Détecte le séparateur le plus probable sur la 1re ligne. */
-function detectDelimiter_(csv) {
-  const line = (csv.split(/\r?\n/)[0]) || '';
-  const semi = (line.match(/;/g) || []).length;
-  const comma = (line.match(/,/g) || []).length;
-  return semi > comma ? ';' : ',';
+/**
+ * Décode un .xlsx (base64) et renvoie la 1re feuille sous forme de tableau 2D.
+ * Apps Script ne sait pas lire un .xlsx directement : on le convertit en Google
+ * Sheet temporaire via le service avancé Drive, on lit les valeurs, puis on
+ * supprime le fichier temporaire. Les cellules dates/nombres reviennent typées
+ * (Date/Number), gérées telles quelles par parseDate_/parseAmount_.
+ * @param {string} base64  Contenu du fichier encodé en base64 (sans préfixe data:).
+ * @param {string=} name   Nom d'origine (pour libeller le fichier temporaire).
+ * @return {Array<Array>}  Lignes de la 1re feuille (en-tête inclus).
+ */
+function readXlsxRows_(base64, name) {
+  const blob = Utilities.newBlob(Utilities.base64Decode(base64),
+                                 MimeType.MICROSOFT_EXCEL, name || 'import.xlsx');
+  // mimeType cible = Google Sheets -> Drive convertit le .xlsx à l'insertion.
+  const resource = { title: 'QuetFlow — import temporaire', mimeType: MimeType.GOOGLE_SHEETS };
+  let file;
+  try {
+    file = Drive.Files.insert(resource, blob);
+  } catch (e) {
+    throw new Error('Fichier Excel illisible (.xlsx attendu).');
+  }
+  try {
+    return SpreadsheetApp.openById(file.id).getSheets()[0].getDataRange().getValues();
+  } finally {
+    try { Drive.Files.remove(file.id); } catch (e) { /* nettoyage best-effort */ }
+  }
 }
 
 /** Normalise une chaîne d'en-tête : minuscules, sans accents, alphanumérique. */

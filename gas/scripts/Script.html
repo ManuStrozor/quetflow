@@ -47,8 +47,14 @@
   }
 
   function handleFile(file) {
+    if (!/\.xlsx$/i.test(file.name)) {
+      toast('⚠️ Format non pris en charge : un fichier Excel (.xlsx) est attendu.', true);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = function (e) {
+      // e.target.result = data URL "data:...;base64,XXXX" -> on garde le base64 seul.
+      const base64 = String(e.target.result).split(',')[1] || '';
       progressStart();
       google.script.run
         .withSuccessHandler(function (res) {
@@ -61,10 +67,10 @@
           refresh();
         })
         .withFailureHandler(function (err) { progressDone(); toast('⚠️ ' + err.message, true); })
-        .importCsv(e.target.result);
+        .importXlsx({ name: file.name, data: base64 });
     };
     reader.onerror = function () { toast('⚠️ Lecture du fichier impossible.', true); };
-    reader.readAsText(file);
+    reader.readAsDataURL(file);
   }
 
   /* ----- Filtres (segmented controls) ----- */
