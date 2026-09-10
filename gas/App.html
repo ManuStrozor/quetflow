@@ -23,15 +23,31 @@
 
   <main class="container">
 
-    <!-- Import -->
+    <!-- Étape 1 — Import -->
     <section class="card import-card">
-      <h2>📥 Importer un export</h2>
+      <h2>📥 Importer un export Moodus</h2>
       <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Importer un fichier Excel">
+        <div class="dz-icon" aria-hidden="true">📄</div>
         <p><strong>Glissez un fichier Excel (.xlsx)</strong><br>ici ou cliquez pour parcourir</p>
         <p class="hint">Export attendu : Terminal · Project Name · Transaction Date · Amount · Celebration · Location…</p>
         <input type="file" id="fileInput" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </div>
     </section>
+
+    <!-- État vide : affiché tant qu'aucune donnée n'est importée -->
+    <section id="emptyState" class="empty-state" hidden>
+      <div class="empty-illus" aria-hidden="true">📊</div>
+      <h2>Vos statistiques apparaîtront ici</h2>
+      <p>Importez un fichier Excel ci-dessus : QuetFlow calcule automatiquement le total collecté, les quêtes par lieu et l'évolution mensuelle.</p>
+    </section>
+
+    <!-- Analyse : masquée tant qu'aucune donnée n'est importée -->
+    <div id="analysis" class="analysis" hidden>
+
+      <div class="section-head">
+        <h2 class="section-title">📊 Analyse des quêtes</h2>
+        <span class="section-hint">Matin = avant 14 h 24 · Dimanche = jour de la messe dominicale</span>
+      </div>
 
     <!-- Filtres -->
     <section class="card filters" id="filters">
@@ -96,6 +112,8 @@
       <div class="card chart-card"><h3>Évolution mensuelle (net)</h3><div class="chart-wrap"><canvas id="chartMonth"></canvas></div></div>
       <div class="card chart-card"><h3>Répartition des montants brut</h3><div class="chart-wrap"><canvas id="chartBrut"></canvas></div></div>
     </section>
+
+    </div><!-- /#analysis -->
 
   </main>
 

@@ -174,6 +174,13 @@
   // Tout est dérivé d'UNE SEULE passe sur ALL_ROWS (aggregate), au lieu de
   // re-filtrer et re-boucler dans chaque renderXxx : essentiel sur gros volumes.
   function render() {
+    // Sans données : on masque tout le tableau de bord et on n'affiche que la
+    // carte d'accueil (évite 5 sections vides qui occupent l'écran pour rien).
+    const hasData = ALL_ROWS.length > 0;
+    byId('emptyState').hidden = hasData;
+    byId('analysis').hidden = !hasData;
+    if (!hasData) return;
+
     const agg = aggregate();
     renderKpis(agg);
     renderMonthChart(agg);

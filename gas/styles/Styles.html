@@ -19,7 +19,8 @@
     font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
     color: var(--ink);
     background: var(--bg);
-    line-height: 1.45;
+    font-size: 16px;         /* base un peu plus grande : lisibilité (public 50+) */
+    line-height: 1.5;
   }
 
   /* En-tête */
@@ -55,43 +56,69 @@
     border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px;
     min-width: 0;
   }
-  .card h2, .card h3 { margin: 0 0 14px; font-size: 16px; }
+  .card h2, .card h3 { margin: 0 0 14px; font-size: 17px; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
   .card-head h3 { margin: 0; }
   .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
   @media (max-width: 760px) { .grid-2 { grid-template-columns: minmax(0, 1fr); } }
 
+  /* Bloc « Analyse » : même grille que le conteneur (espacement homogène).
+     Masqué tant qu'aucune donnée n'est importée (voir #emptyState). */
+  .analysis { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .analysis[hidden] { display: none; }
+
+  /* Titre de section : sépare visuellement l'import de l'analyse */
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-top: 6px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+  }
+  .section-title { margin: 0; font-size: 20px; }
+  .section-hint { font-size: 13.5px; color: var(--muted); }
+
+  /* État vide : carte d'accueil unique tant qu'il n'y a pas de données */
+  .empty-state {
+    text-align: center; padding: 48px 24px; color: var(--muted);
+    background: var(--surface); border: 1px dashed #c7c9dd; border-radius: var(--radius);
+  }
+  .empty-illus { font-size: 46px; line-height: 1; margin-bottom: 10px; }
+  .empty-state h2 { margin: 0 0 8px; font-size: 20px; color: var(--ink); }
+  .empty-state p { margin: 0 auto; max-width: 440px; font-size: 15px; }
+
   /* Filtres */
   .filters { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 14px 20px; }
   .filter-group { display: flex; align-items: center; gap: 10px; }
-  .filter-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .filter-label { font-size: 14px; font-weight: 600; color: var(--muted); }
   .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
   .seg-btn {
     border: 0; background: transparent; color: var(--muted); cursor: pointer;
-    padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background .15s, color .15s;
+    padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; transition: background .15s, color .15s;
   }
   .seg-btn:hover { color: var(--ink); }
   .seg-btn.is-active { background: var(--primary); color: #fff; box-shadow: 0 1px 2px rgba(28,30,60,.18); }
   .muted-note { font-weight: 400; font-size: 13px; color: var(--muted); }
 
-  /* Import */
+  /* Import : légère teinte pour distinguer la zone d'action de l'analyse (cartes blanches) */
+  .import-card { background: #fbfaff; border-color: #d9d5f7; }
   .dropzone {
-    border: 2px dashed #c7c9dd; border-radius: 12px; padding: 28px;
-    text-align: center; cursor: pointer; color: var(--muted);
+    border: 2px dashed #c7c9dd; border-radius: 12px; padding: 32px 28px;
+    text-align: center; cursor: pointer; color: var(--muted); background: var(--surface);
     transition: border-color .15s, background .15s;
   }
   .dropzone:hover, .dropzone:focus, .dropzone.drag {
     border-color: var(--primary); background: #f6f5ff; outline: none;
   }
+  .dz-icon { font-size: 40px; line-height: 1; margin-bottom: 8px; }
   .dropzone p { margin: 4px 0; }
-  .dropzone .hint { font-size: 12.5px; }
+  .dropzone p strong { font-size: 16px; color: var(--ink); }
+  .dropzone .hint { font-size: 13px; }
 
   /* KPIs */
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
   @media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .kpi { display: flex; flex-direction: column; gap: 6px; }
-  .kpi-label { font-size: 13px; color: var(--muted); }
-  .kpi-value { font-size: 26px; font-weight: 700; color: var(--primary-d); }
+  .kpi-label { font-size: 14px; color: var(--muted); }
+  .kpi-value { font-size: 28px; font-weight: 700; color: var(--primary-d); }
 
   /* Graphiques */
   .chart-wrap { position: relative; height: 260px; }
@@ -99,9 +126,9 @@
 
   /* Table */
   .table-wrap { overflow-x: auto; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  .data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-  .data-table th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .4px; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .data-table th, .data-table td { padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .data-table th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; }
   .data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .data-table tr:last-child td { border-bottom: none; }
   .data-table .empty { text-align: center; color: var(--muted); padding: 24px; }
