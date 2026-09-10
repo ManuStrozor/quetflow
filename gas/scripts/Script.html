@@ -107,7 +107,7 @@
     google.script.run
       .withSuccessHandler(function (cfg) {
         CFG = cfg || {};
-        byId('cfgBtn').hidden = !CFG.isAdmin;   // bouton visible pour le seul admin
+        //byId('cfgBtn').hidden = !CFG.isAdmin;   // bouton visible pour le seul admin
         fillConfigForm(CFG);
       })
       .withFailureHandler(function () { /* silencieux */ })

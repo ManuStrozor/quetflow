@@ -128,8 +128,8 @@ function importXlsx(payload) {
     const aliases = HEADER_ALIASES[canon];
     col[canon] = head.findIndex(function (h) { return aliases.indexOf(h) > -1; });
   });
-  if (col.amount < 0) throw new Error('Colonne « Amount » introuvable dans le fichier.');
-  if (col.date < 0)   throw new Error('Colonne « Transaction Date » introuvable dans le fichier.');
+  if (col.amount < 0) throw new Error('Colonne « Montant » introuvable dans le fichier.');
+  if (col.date < 0)   throw new Error('Colonne « Date » introuvable dans le fichier.');
 
   const sh = getSheet_();
   const seen = existingTxIds_(sh);            // doublons inter-imports + intra-fichier
