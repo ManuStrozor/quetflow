@@ -6,20 +6,23 @@
   const PALETTE = ['#5b4bd6', '#16b8a6', '#f5a524', '#ef5da8', '#3aa0ff', '#9b8cff', '#27c498', '#ff7a59'];
   const charts = {};
 
-  // Données brutes renvoyées par le serveur + état des filtres.
+  // Données brutes renvoyées par le serveur + état des filtres + config partagée.
   let ALL_ROWS = [];
   const filters = { jour: 'all', moment: 'all' };
+  let CFG = {};
 
   /* ----- Démarrage ----- */
   document.addEventListener('DOMContentLoaded', function () {
     initImport();
     initFilters();
+    initConfig();
     document.getElementById('resetBtn').addEventListener('click', onReset);
     progressStart();
     google.script.run
       .withSuccessHandler(function (url) { document.getElementById('ssLink').href = url; progressDone(); })
       .withFailureHandler(progressDone)
       .getStorageUrl();
+    loadConfig();
     refresh();
   });
 
@@ -85,6 +88,61 @@
         render();
       });
     });
+  }
+
+  /* ----- Configuration (admin) ----- */
+  function initConfig() {
+    byId('cfgBtn').addEventListener('click', openCfg);
+    byId('cfgCancel').addEventListener('click', closeCfg);
+    byId('cfgSave').addEventListener('click', saveCfg);
+    // Fermeture : clic sur le fond (hors carte) ou touche Échap.
+    byId('cfgModal').addEventListener('click', function (e) { if (e.target === this) closeCfg(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !byId('cfgModal').hidden) closeCfg();
+    });
+  }
+
+  // Config non critique au démarrage : appel silencieux (sans barre de progression).
+  function loadConfig() {
+    google.script.run
+      .withSuccessHandler(function (cfg) {
+        CFG = cfg || {};
+        byId('cfgBtn').hidden = !CFG.isAdmin;   // bouton visible pour le seul admin
+        fillConfigForm(CFG);
+      })
+      .withFailureHandler(function () { /* silencieux */ })
+      .getConfig();
+  }
+
+  function fillConfigForm(cfg) {
+    if (!cfg) return;
+    byId('cfgRate').value  = (cfg.ratePct != null) ? cfg.ratePct : '';
+    byId('cfgFixed').value = (cfg.fixed   != null) ? cfg.fixed   : '';
+  }
+
+  function openCfg() {
+    fillConfigForm(CFG);
+    byId('cfgModal').hidden = false;
+    byId('cfgRate').focus();
+  }
+  function closeCfg() { byId('cfgModal').hidden = true; }
+
+  function saveCfg() {
+    const ratePct = parseFloat(byId('cfgRate').value);
+    const fixed   = parseFloat(byId('cfgFixed').value);
+    if (!isFinite(ratePct) || ratePct <= 0 || ratePct > 100) { toast('⚠️ Taux invalide (entre 0 et 100).', true); return; }
+    if (!isFinite(fixed) || fixed < 0) { toast('⚠️ Montant fixe invalide.', true); return; }
+    progressStart();
+    google.script.run
+      .withSuccessHandler(function (cfg) {
+        progressDone();
+        CFG = cfg || {};
+        fillConfigForm(CFG);
+        closeCfg();
+        toast('✅ Configuration enregistrée · appliquée aux prochains imports.');
+      })
+      .withFailureHandler(function (err) { progressDone(); toast('⚠️ ' + err.message, true); })
+      .setConfig({ ratePct: ratePct, fixed: fixed });
   }
 
   /* ----- Chargement des données ----- */

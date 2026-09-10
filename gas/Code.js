@@ -9,11 +9,19 @@
 
 const SHEET_NAME = 'Transactions';
 const PROP_SS_ID = 'QUETFLOW_SS_ID';
+
+// Propriétés de SCRIPT (partagées entre TOUS les utilisateurs), pilotées par la
+// Configuration. À renseigner par l'admin dans « Paramètres du projet » > Propriétés
+// du script. PROP_ADMIN_EMAIL désigne le seul compte autorisé à ouvrir la config.
+const PROP_ADMIN_EMAIL    = 'QUETFLOW_ADMIN_EMAIL';    // ex. prenom.nom@domaine.com
+const PROP_DISCOUNT_RATE  = 'QUETFLOW_DISCOUNT_RATE';  // taux en facteur, ex. 0.9885
+const PROP_DISCOUNT_FIXED = 'QUETFLOW_DISCOUNT_FIXED'; // montant fixe soustrait, ex. 0.1
 // Fuseau du runtime (cf. appsscript.json "timeZone") : les getters Date locaux
 // (getDay/getHours/getMonth) raisonnent donc en Europe/Paris, ce qui évite tout
 // Utilities.formatDate par ligne lors de la lecture du tableau de bord.
 
 // Discount appliqué au montant brut : net = ROUNDDOWN(brut * RATE ; 2) - FIXED.
+// Valeurs par défaut : utilisées tant que la Configuration ne les a pas surchargées.
 const DISCOUNT_RATE = 0.9885;
 const DISCOUNT_FIXED = 0.1;
 // Fraction de journée séparant matin et soir (0,6 jour = 14h24).
@@ -125,6 +133,8 @@ function importXlsx(payload) {
 
   const sh = getSheet_();
   const seen = existingTxIds_(sh);            // doublons inter-imports + intra-fichier
+  const rate = getDiscountRate_();            // lus une seule fois (pas par ligne)
+  const fixed = getDiscountFixed_();
 
   const out = [];
   let skipped = 0, duplicates = 0;
@@ -150,7 +160,7 @@ function importXlsx(payload) {
       col.location     > -1 ? String(r[col.location]     || '').trim() : '',
       txId,
       brut,
-      discount_(brut),
+      discount_(brut, rate, fixed),
       date ? (isSunday_(date)  ? 'Oui'   : 'Non')  : '',
       date ? (isMorning_(date) ? 'Matin' : 'Soir') : ''
     ]);
@@ -228,12 +238,16 @@ function parseAmount_(v) {
 
 /**
  * Applique le discount au montant brut.
- * net = ROUNDDOWN(brut * 0,9885 ; 2) - 0,1   (arrondi inférieur à 2 décimales)
- * Ex. : 10 € -> ROUNDDOWN(9,885;2)=9,88 -> 9,78 €.
+ * net = ROUNDDOWN(brut * taux ; 2) - fixe   (arrondi inférieur à 2 décimales)
+ * Ex. (98,85 % / 0,10 €) : 10 € -> ROUNDDOWN(9,885;2)=9,88 -> 9,78 €.
+ * Le taux et le fixe sont passés par l'appelant (lus une seule fois par import) ;
+ * à défaut, ils sont relus depuis la Configuration.
  */
-function discount_(brut) {
-  const truncated = Math.floor(brut * DISCOUNT_RATE * 100) / 100;
-  return truncated - DISCOUNT_FIXED;
+function discount_(brut, rate, fixed) {
+  if (rate  == null) rate  = getDiscountRate_();
+  if (fixed == null) fixed = getDiscountFixed_();
+  const truncated = Math.floor(brut * rate * 100) / 100;
+  return truncated - fixed;
 }
 
 /** Parse une date au format mm/jj/aa hh:mm:ss (US, mois en premier). Renvoie Date ou null. */
@@ -328,4 +342,67 @@ function resetData() {
   const maxRows = sh.getMaxRows();
   if (maxRows > 2) sh.deleteRows(3, maxRows - 2);
   return { empty: true, rows: [] };
+}
+
+/* ------------------------------------------------------------------ *
+ *  Configuration (paramètres partagés — ScriptProperties)
+ * ------------------------------------------------------------------ */
+
+/** Taux de discount courant (facteur), depuis la config partagée ou la valeur par défaut. */
+function getDiscountRate_() {
+  const v = parseFloat(PropertiesService.getScriptProperties().getProperty(PROP_DISCOUNT_RATE));
+  return (isFinite(v) && v > 0) ? v : DISCOUNT_RATE;
+}
+
+/** Montant fixe soustrait courant, depuis la config partagée ou la valeur par défaut. */
+function getDiscountFixed_() {
+  const v = parseFloat(PropertiesService.getScriptProperties().getProperty(PROP_DISCOUNT_FIXED));
+  return (isFinite(v) && v >= 0) ? v : DISCOUNT_FIXED;
+}
+
+/**
+ * Vrai si l'utilisateur courant est l'admin autorisé à modifier la config.
+ * Compare son email à PROP_ADMIN_EMAIL (ScriptProperties). Si aucun admin n'est
+ * défini, personne ne l'est (le bouton reste masqué pour tout le monde).
+ */
+function isAdmin_() {
+  const admin = String(PropertiesService.getScriptProperties().getProperty(PROP_ADMIN_EMAIL) || '')
+    .trim().toLowerCase();
+  if (!admin) return false;
+  let email = '';
+  try { email = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase(); } catch (e) { email = ''; }
+  return !!email && email === admin;
+}
+
+/**
+ * Configuration lue par le tableau de bord au chargement.
+ * @return {{ratePct:number, fixed:number, isAdmin:boolean}}
+ *   ratePct : taux exprimé en pourcentage (98.85), fixed : montant fixe (0.1).
+ */
+function getConfig() {
+  return {
+    ratePct: Number((getDiscountRate_() * 100).toFixed(4)),
+    fixed:   getDiscountFixed_(),
+    isAdmin: isAdmin_()
+  };
+}
+
+/**
+ * Enregistre la configuration (réservé à l'admin). Renvoie la config à jour.
+ * @param {{ratePct:number, fixed:number}} cfg  Taux en % et montant fixe en €.
+ */
+function setConfig(cfg) {
+  if (!isAdmin_()) throw new Error('Action réservée à l’administrateur.');
+  const ratePct = Number(cfg && cfg.ratePct);
+  const fixed   = Number(cfg && cfg.fixed);
+  if (!isFinite(ratePct) || ratePct <= 0 || ratePct > 100) {
+    throw new Error('Taux invalide : attendu un pourcentage entre 0 et 100.');
+  }
+  if (!isFinite(fixed) || fixed < 0) {
+    throw new Error('Montant fixe invalide : attendu un nombre positif.');
+  }
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(PROP_DISCOUNT_RATE, String(ratePct / 100));   // stocké en facteur
+  props.setProperty(PROP_DISCOUNT_FIXED, String(fixed));
+  return getConfig();
 }

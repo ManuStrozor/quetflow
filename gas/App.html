@@ -16,7 +16,10 @@
         <p class="tagline">Centralisez et visualisez les quêtes paroissiales</p>
       </div>
     </div>
-    <a id="ssLink" class="ss-link" target="_blank" rel="noopener" title="Ouvrir le classeur de données">📑 Données</a>
+    <div class="header-actions">
+      <button id="cfgBtn" class="ss-link" type="button" title="Configuration" hidden>⚙️ Configuration</button>
+      <a id="ssLink" class="ss-link" target="_blank" rel="noopener" title="Ouvrir le classeur de données">📑 Données</a>
+    </div>
   </header>
 
   <main class="container">
@@ -57,7 +60,7 @@
       <div class="card kpi"><span class="kpi-label">Total collecté (net)</span><span class="kpi-value" id="kpiTotal">—</span></div>
       <div class="card kpi"><span class="kpi-label">Transactions</span><span class="kpi-value" id="kpiCount">—</span></div>
       <div class="card kpi"><span class="kpi-label">Montant moyen (brut)</span><span class="kpi-value" id="kpiAvg">—</span></div>
-      <div class="card kpi"><span class="kpi-label">Bornes actives</span><span class="kpi-value" id="kpiBornes">—</span></div>
+      <div class="card kpi"><span class="kpi-label">Bornes-choix utilisés</span><span class="kpi-value" id="kpiBornes">—</span></div>
     </section>
 
     <!-- Quêtes : tableau croisé Celebration × Location -->
@@ -96,6 +99,27 @@
     </section>
 
   </main>
+
+  <!-- Configuration (admin) -->
+  <div id="cfgModal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="cfgTitle">
+      <h2 id="cfgTitle">⚙️ Configuration</h2>
+      <p class="modal-sub">Paramètres du calcul du montant net. Appliqués aux <strong>prochains imports</strong>.</p>
+      <label class="field">
+        <span>Taux appliqué au brut (%)</span>
+        <input id="cfgRate" type="number" step="0.01" min="0" max="100" inputmode="decimal">
+      </label>
+      <label class="field">
+        <span>Montant fixe soustrait (€)</span>
+        <input id="cfgFixed" type="number" step="0.01" min="0" inputmode="decimal">
+      </label>
+      <p class="formula">net = ROUNDDOWN(brut × taux ; 2) − fixe</p>
+      <div class="modal-actions">
+        <button id="cfgCancel" class="btn-ghost" type="button">Annuler</button>
+        <button id="cfgSave" class="btn-primary" type="button">Enregistrer</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
   <div id="loader" class="loader" hidden><div class="spinner"></div></div>

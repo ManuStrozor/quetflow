@@ -33,10 +33,12 @@
   .brand .logo { font-size: 32px; line-height: 1; }
   .brand h1 { margin: 0; font-size: 22px; letter-spacing: .3px; }
   .tagline { margin: 2px 0 0; font-size: 13px; opacity: .85; }
+  .header-actions { display: flex; align-items: center; gap: 10px; }
+  /* .ss-link stylise à la fois le lien <a> « Données » et le bouton <button> « Configuration ». */
   .ss-link {
-    color: #fff; text-decoration: none; font-size: 14px; font-weight: 600;
+    color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; font-family: inherit;
     background: rgba(255,255,255,.16); padding: 8px 14px; border-radius: 999px;
-    transition: background .15s;
+    border: 0; cursor: pointer; white-space: nowrap; transition: background .15s;
   }
   .ss-link:hover { background: rgba(255,255,255,.28); }
 
@@ -116,9 +118,38 @@
   /* Boutons */
   .btn-ghost {
     border: 1px solid var(--border); background: #fff; color: var(--muted);
-    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit;
   }
   .btn-ghost:hover { color: #c0392b; border-color: #e3b7b1; background: #fdf3f1; }
+  .btn-primary {
+    border: 0; background: var(--primary); color: #fff;
+    padding: 9px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; font-family: inherit;
+  }
+  .btn-primary:hover { background: var(--primary-d); }
+
+  /* Modale (Configuration) */
+  .modal {
+    position: fixed; inset: 0; background: rgba(28, 30, 60, .45);
+    display: flex; align-items: center; justify-content: center; z-index: 70; padding: 20px;
+  }
+  .modal[hidden] { display: none; }
+  .modal-card {
+    background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 24px; width: 100%; max-width: 420px;
+  }
+  .modal-card h2 { margin: 0 0 6px; font-size: 18px; }
+  .modal-sub { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .field input {
+    font-size: 15px; font-weight: 600; color: var(--ink); font-family: inherit;
+    padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+  }
+  .field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(91, 75, 214, .15); }
+  .formula {
+    margin: 0; font-size: 12.5px; color: var(--muted); text-align: center;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
   /* Toast */
   .toast {
