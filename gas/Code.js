@@ -401,8 +401,11 @@ function setConfig(cfg) {
   if (!isFinite(fixed) || fixed < 0) {
     throw new Error('Montant fixe invalide : attendu un nombre positif.');
   }
+  // ratePct/100 en flottant introduit un bruit binaire (98.85/100 = 0.98849999…).
+  // On arrondit le facteur pour stocker une valeur propre (0.9885).
+  const rateFactor = Number((ratePct / 100).toFixed(6));
   const props = PropertiesService.getScriptProperties();
-  props.setProperty(PROP_DISCOUNT_RATE, String(ratePct / 100));   // stocké en facteur
+  props.setProperty(PROP_DISCOUNT_RATE, String(rateFactor));   // stocké en facteur
   props.setProperty(PROP_DISCOUNT_FIXED, String(fixed));
   return getConfig();
 }
